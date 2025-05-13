@@ -4,7 +4,7 @@
 
 ---
 
-## 🚀 Features
+## Features
 
 - 📡 Real-time soil sensor ingestion
 - 🌦️ Weather and market data 
@@ -15,7 +15,7 @@
 
 ---
 
-## 🧱 Tech Stack
+## Tech Stack
 
 | Layer | Tech |
 |-------|------|
@@ -24,13 +24,13 @@
 | **Storage** | S3, HDFS, GCS |
 | **Warehouse** | Snowflake / Hive |
 | **Databases** | PostgreSQL, MongoDB |
-| **Change Data Capture | Debezium, Kafka Connect |
+| **Change Data Capture** | Debezium, Kafka Connect |
 | **ML** | Python, Scikit-learn, Spark MLlib |
 | **Dashboards** | Power BI, Apache Superset |
 
 ---
 
-## 📦 Project Structure
+## Project Structure
 
 
 
