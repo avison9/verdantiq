@@ -19,14 +19,15 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v2
 
+    - name: Download jar files
+      run: bash util/spark-lib-downloader.sh
+      shell: bash
+      continue-on-error: false
+
     - name: Build and start containers
       run: |
         docker-compose up -d --build
-        
-    - name: Wait for services to be ready
-      run: |
-        docker-compose run --rm test-infra python -m pytest tests/test_infrastructure.py -m wait
-        
+             
     - name: Run infrastructure tests
       run: |
         docker-compose run --rm test-infra python -m pytest tests/test_infrastructure.py -m test
@@ -34,3 +35,4 @@ jobs:
     - name: Clean up
       if: always()
       run: docker-compose down -v
+
