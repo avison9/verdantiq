@@ -26,11 +26,11 @@ jobs:
 
     - name: Build and start containers
       run: |
-        docker-compose up -d --build
+        docker compose up -d --build
              
     - name: Run infrastructure tests
       run: |
-        docker-compose run --rm test-infra python -m pytest tests/test_infrastructure.py -m test
+        docker compose run --rm test-infra python -m pytest tests/test_infrastructure.py -m test
         
     - name: Clean up
       if: always()
