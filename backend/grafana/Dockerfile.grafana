@@ -1,0 +1,4 @@
+FROM grafana/grafana:latest
+
+
+COPY --chown=472:472 grafana/dashboard/kafka-metrics.json /etc/grafana/provisioning/dashboards/
