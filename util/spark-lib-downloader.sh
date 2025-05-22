@@ -1,5 +1,6 @@
 #!/bin/sh
 
+mkdir -p backend/libs/jdbc
 
 wget https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.6/hadoop-aws-3.3.6.jar -O backend/libs/jdbc/hadoop.jar
 
