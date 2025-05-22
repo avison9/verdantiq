@@ -10,7 +10,7 @@ wget https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.100/a
 
 wget https://jdbc.postgresql.org/download/postgresql-42.7.3.jar -O backend/libs/jdbc/postgresql-jdbc.jar
 
-wget https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-spark-runtime-3.5_2.12/1.4.2/iceberg-spark-runtime-3.5_2.12-1.4.2.jar -O backend/libs/jdbc/iceberg-spark-runtime.jar
+wget https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-spark-runtime-3.5_2.12/1.4.2/iceberg-spark-runtime-3.5_2.12-1.4.2.jar -O backend/libs/jdbc/iceberg-spark-runtime-3.5_2.12-1.4.2.jar
 
 wget https://repo1.maven.org/maven2/com/google/guava/guava/30.1.1-jre/guava-30.1.1-jre.jar -O backend/libs/jdbc/guava-30.1.1-jre.jar
 
