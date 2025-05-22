@@ -30,7 +30,7 @@ jobs:
              
     - name: Run infrastructure tests
       run: |
-        docker compose run --rm test-infra python -m pytest tests/test_infrastructure.py -m test
+        docker compose run --rm test-infra bash -c "source /app/venv/bin/activate && python -m pytest tests/test_infrastructure.py -m test"
         
     - name: Clean up
       if: always()

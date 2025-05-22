@@ -31,6 +31,4 @@ RUN /app/venv/bin/python -m pip install --upgrade pip && /app/venv/bin/pip insta
 
 COPY backend/test-infra/tests/test_infrastructure.py ./tests/test_infrastructure.py
 
-# CMD ["/app/venv/bin/python", "-m", "pytest", "tests/test_infrastructure.py"]
-
-CMD ["sh", "-c", "sleep 60 && /app/venv/bin/python -m pytest tests/test_infrastructure.py"]
+CMD ["sh", "-c", "/app/venv/bin/python -m pytest tests/test_infrastructure.py"]
