@@ -1,0 +1,38 @@
+# Use the official Apache Hive image as the base image
+FROM apache/hive:4.0.0-beta-1
+
+# Install OpenJDK 11 (and other dependencies if required)
+USER root
+RUN apt-get update && apt-get install -y openjdk-11-jdk && apt-get clean
+
+RUN apt-get update && apt-get install -y netcat
+
+RUN apt-get update && apt-get install -y net-tools
+
+RUN apt-get update && apt-get install -y lsof
+
+
+# Set JAVA_HOME environment variable
+ENV JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+ENV PATH=$JAVA_HOME/bin:$PATH
+
+# Ensure hive can find Java
+RUN echo "JAVA_HOME=$JAVA_HOME" >> /etc/environment
+
+# Switch to the 'hive' user to maintain security
+USER hive
+
+# Copy over any necessary files from your local machine to the container
+COPY hive/scripts/start-metastore.sh /opt/hive/bin/start-metastore.sh
+COPY hive/hive-minio.xml /opt/hive/conf/hive-site.xml
+COPY libs/jdbc/postgresql-jdbc.jar /opt/hive/lib/postgresql-jdbc.jar
+
+
+# Set the working directory
+WORKDIR /opt/hive
+
+# Expose the required port for the Hive Metastore
+EXPOSE 9083
+
+# Define the entrypoint for the Hive Metastore service
+ENTRYPOINT ["/opt/hive/bin/start-metastore.sh"]
