@@ -1,0 +1,487 @@
+networks:
+  verdantiq-net:
+    driver: bridge
+    name: verdantiq-net
+
+services:
+  zookeeper-1:
+    container_name: zookeeper-1
+    build:
+      context: .
+      dockerfile: backend/kafka/zookeeper/Dockerfile.zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOO_MY_ID: 1
+      ZOO_SERVERS: server.1=zookeeper-1:2888:3888;2181 server.2=zookeeper-2:2888:3888;2181
+      ZOO_CLIENT_PORT: 2181
+      ZOO_4LW_COMMANDS_WHITELIST: ruok
+    volumes:
+      - zk_data1:/data
+      - zk_log1:/datalog
+      - ./backend/kafka/kafka_utils/zkok.sh:/zkok.sh
+    networks:
+      - verdantiq-net
+    healthcheck:
+      test: ["CMD", "/zkok.sh"]
+      interval: 15s
+      timeout: 30s
+      retries: 5
+
+  zookeeper-2:
+    container_name: zookeeper-2
+    build: 
+      context: .
+      dockerfile: backend/kafka/zookeeper/Dockerfile.zookeeper
+    ports:
+      - "2182:2181"
+    environment:
+      ZOO_MY_ID: 2
+      ZOO_SERVERS: server.1=zookeeper-1:2888:3888;2181 server.2=zookeeper-2:2888:3888;2181
+      ZOO_CLIENT_PORT: 2181
+      ZOO_4LW_COMMANDS_WHITELIST: ruok
+    volumes:
+      - zk_data2:/data
+      - zk_log2:/datalog
+      - ./backend/kafka/kafka_utils/zkok.sh:/zkok.sh
+    depends_on:
+      - zookeeper-1
+    networks:
+      - verdantiq-net
+    healthcheck:
+      test: ["CMD", "/zkok.sh"]
+      interval: 15s
+      timeout: 30s
+      retries: 5
+  kafka1:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka1
+    depends_on:
+      zookeeper-1:
+        condition: service_healthy
+      zookeeper-2:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper-1:2181,zookeeper-2:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka1:9092,PLAINTEXT_HOST://localhost:19092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+    ports:
+      - "19092:19092"
+    networks:
+      - verdantiq-net
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--list", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 30s
+      retries: 3
+
+
+  kafka2:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka2
+    depends_on:
+      zookeeper-1:
+        condition: service_healthy
+      zookeeper-2:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 2
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper-1:2181,zookeeper-2:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka2:9093,PLAINTEXT_HOST://localhost:19093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+    ports:
+      - "19093:19093"
+    networks:
+      - verdantiq-net
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--list", "--bootstrap-server", "localhost:9093"]
+      interval: 10s
+      timeout: 30s
+      retries: 3
+
+  kafka3:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka3
+    depends_on:
+      zookeeper-1:
+        condition: service_healthy
+      zookeeper-2:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 3
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper-1:2181,zookeeper-2:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka3:9094,PLAINTEXT_HOST://localhost:19094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+    ports:
+      - "19094:19094"
+    networks:
+      - verdantiq-net
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--list", "--bootstrap-server", "localhost:9094"]
+      interval: 10s
+      timeout: 30s
+      retries: 3
+
+  kafka4:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka4
+    depends_on:
+      zookeeper-1:
+        condition: service_healthy
+      zookeeper-2:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 4
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper-1:2181,zookeeper-2:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka4:9095,PLAINTEXT_HOST://localhost:19095
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+    ports:
+      - "19095:19095"
+    networks:
+      - verdantiq-net
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--list", "--bootstrap-server", "localhost:9095"]
+      interval: 10s
+      timeout: 30s
+      retries: 3
+
+  schema-registry:
+    build:
+      context: .  
+      dockerfile: backend/kafka/schema-registry/Dockerfile.schema-registry 
+    container_name: schema-registry
+    depends_on:
+      kafka1:
+        condition: service_healthy
+      kafka2:
+        condition: service_healthy
+      kafka3:
+        condition: service_healthy
+      kafka4:
+        condition: service_healthy
+    ports:
+      - "8089:8089" 
+      - "9101:9101"
+    environment:
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: "kafka1:9092,kafka2:9093,kafka3:9094,kafka4:9095"
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_LISTENERS: "http://0.0.0.0:8089"
+      SCHEMA_REGISTRY_AVRO_AUTO_REGISTER_SCHEMAS: "true"
+      SCHEMA_REGISTRY_SCHEMA_COMPATIBILITY: "BACKWARD"
+    networks:
+      - verdantiq-net
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost:8089"]
+    #   interval: 10s
+    #   timeout: 30s
+    #   retries: 5
+  
+  kafka-exporter:
+    build:
+      context: .
+      dockerfile: backend/kafka/exporter/Dockerfile.kafkaexporter
+    container_name: kafka-exporter
+    ports:
+      - "9308:9308"
+    depends_on:
+      kafka1:
+        condition: service_healthy
+      kafka2:
+        condition: service_healthy
+      kafka3:
+        condition: service_healthy
+      kafka4:
+        condition: service_healthy
+    networks:
+      - verdantiq-net
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost:9308"]
+    #   test: ["CMD-SHELL", "curl -fsS http://localhost:9308 || exit 1"]
+    #   interval: 10s
+    #   timeout: 10s
+    #   retries: 3
+  
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./backend/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./backend/prometheus/rules.yml:/etc/prometheus/rules.yml
+      - prometheus_data:/prometheus  
+    ports:
+      - "9090:9090"
+    networks:
+      - verdantiq-net
+    depends_on:
+      kafka1:
+        condition: service_healthy
+      kafka2:
+        condition: service_healthy
+      kafka3:
+        condition: service_healthy
+      kafka4:
+        condition: service_healthy
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    # healthcheck:
+    #   test: ["CMD", "wget", "-q", "localhost:9090/-/healthy"]
+    
+    #   interval: 10s
+    #   timeout: 5s
+    #   retries: 3
+  
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - verdantiq-net
+    volumes:
+      - grafana_data:/var/lib/grafana  
+      - ./backend/grafana:/var/lib/grafana/dashboards
+      - ./backend/grafana/conf:/etc/grafana/provisioning/dashboards/conf
+      - ./backend/grafana/dashboard:/etc/grafana/provisioning/dashboards/dashboard
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-myDevPass123}  
+    depends_on:
+      kafka1:
+        condition: service_healthy
+      kafka2:
+        condition: service_healthy
+      kafka3:
+        condition: service_healthy
+      kafka4:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  minio:
+    image: minio/minio
+    container_name: minio
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: myminiopassword
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    depends_on:
+      grafana:
+        condition: service_healthy
+    networks:
+      - verdantiq-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+  
+  spark-master:
+    build:
+      context: .
+      dockerfile: backend/spark/Dockerfile.spark
+    container_name: spark-master
+    environment:
+      - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      - SPARK_DAEMON_MEMORY=2g
+      - SPARK_LOAD_SPARK_ICEBERG=true
+      - SPARK_CONF_DIR=/opt/bitnami/spark/conf
+      - SPARK_EXTRA_CLASSPATH=/opt/bitnami/spark/jars/iceberg-spark-runtime-3.5_2.12-1.4.2.jar:/opt/bitnami/spark/jars/hadoop-aws-3.3.6.jar:/opt/bitnami/spark/jars/aws-java-sdk-bundle-1.12.100.jar:/opt/bitnami/spark/jars/guava-30.1-jre.jar
+    
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    networks:
+      - verdantiq-net
+    depends_on:
+      minio:
+        condition: service_healthy
+    volumes:
+      - spark_data:/bitnami
+      - ./backend/spark/config/configuration.conf:/opt/bitnami/spark/conf/configuration.conf
+      # - ./backend/libs/jdbc/hadoop.jar:/opt/bitnami/spark/jars/hadoop-aws.jar
+      # - ./libs/jdbc/aws-sdk.jar:/opt/bitnami/spark/jars/aws-java-sdk-bundle.jar
+      # - ./libs/jdbc/iceberg-spark-runtime.jar:/opt/bitnami/spark/jars/iceberg-spark-runtime.jar
+      # - ./libs/jdbc/guava-30.1-jre.jar:/opt/bitnami/spark/jars/guava-30.1-jre.jar
+      
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080 || exit 1"]
+      interval: 10s
+      timeout: 20s
+      retries: 3
+
+  spark-worker1:
+    build:
+      context: .
+      dockerfile: backend/spark/Dockerfile.spark
+    container_name: spark-worker1
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=16G
+      - SPARK_WORKER_CORES=8
+      - SPARK_LOAD_SPARK_ICEBERG=true
+      - SPARK_CONF_DIR=/opt/bitnami/spark/conf
+      - SPARK_EXTRA_CLASSPATH=/opt/bitnami/spark/jars/iceberg-spark-runtime-3.5_2.12-1.4.2.jar:/opt/bitnami/spark/jars/hadoop-aws-3.3.6.jar:/opt/bitnami/spark/jars/aws-java-sdk-bundle-1.12.100.jar:/opt/bitnami/spark/jars/guava-30.1-jre.jar
+    
+    ports:
+      - "8081:8081"
+    volumes:
+      - spark_data:/bitnami
+      - ./backend/spark/config/configuration.conf:/opt/bitnami/spark/conf/configuration.conf
+      # - ./libs/jdbc/hadoop.jar:/opt/bitnami/spark/jars/hadoop-aws.jar
+      # - ./libs/jdbc/aws-sdk.jar:/opt/bitnami/spark/jars/aws-java-sdk-bundle.jar
+      # - ./libs/jdbc/iceberg-spark-runtime.jar:/opt/bitnami/spark/jars/iceberg-spark-runtime.jar
+      # - ./libs/jdbc/guava-30.1-jre.jar:/opt/bitnami/spark/jars/guava-30.1-jre.jar
+    networks:
+      - verdantiq-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8081 || exit 1"]
+      interval: 10s
+      timeout: 20s
+      retries: 3
+
+  spark-worker2:
+    build:
+      context: .
+      dockerfile: backend/spark/Dockerfile.spark
+    container_name: spark-worker2
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=16G
+      - SPARK_WORKER_CORES=8
+      - SPARK_LOAD_SPARK_ICEBERG=true
+      - SPARK_CONF_DIR=/opt/bitnami/spark/conf
+      - SPARK_EXTRA_CLASSPATH=/opt/bitnami/spark/jars/iceberg-spark-runtime-3.5_2.12-1.4.2.jar:/opt/bitnami/spark/jars/hadoop-aws-3.3.6.jar:/opt/bitnami/spark/jars/aws-java-sdk-bundle-1.12.100.jar:/opt/bitnami/spark/jars/guava-30.1-jre.jar
+    
+    ports:
+      - "8082:8081"
+    volumes:
+      - spark_data:/bitnami
+      - ./backend/spark/config/configuration.conf:/opt/bitnami/spark/conf/configuration.conf
+      # - ./libs/jdbc/hadoop.jar:/opt/bitnami/spark/jars/hadoop-aws.jar
+      # - ./libs/jdbc/aws-sdk.jar:/opt/bitnami/spark/jars/aws-java-sdk-bundle.jar
+      # - ./libs/jdbc/iceberg-spark-runtime.jar:/opt/bitnami/spark/jars/iceberg-spark-runtime.jar
+      # - ./libs/jdbc/guava-30.1-jre.jar:/opt/bitnami/spark/jars/guava-30.1-jre.jar
+    networks:
+      - verdantiq-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8081 || exit 1"]
+      interval: 10s
+      timeout: 20s
+      retries: 3
+
+  spark-worker3:
+    build:
+      context: .
+      dockerfile: backend/spark/Dockerfile.spark
+    container_name: spark-worker3
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=16G
+      - SPARK_WORKER_CORES=8
+      - SPARK_LOAD_SPARK_ICEBERG=true
+      - SPARK_CONF_DIR=/opt/bitnami/spark/conf
+      - SPARK_EXTRA_CLASSPATH=/opt/bitnami/spark/jars/iceberg-spark-runtime-3.5_2.12-1.4.2.jar:/opt/bitnami/spark/jars/hadoop-aws-3.3.6.jar:/opt/bitnami/spark/jars/aws-java-sdk-bundle-1.12.100.jar:/opt/bitnami/spark/jars/guava-30.1-jre.jar
+
+    ports:
+      - "8083:8081"
+    volumes:
+      - spark_data:/bitnami
+      - ./backend/spark/config/configuration.conf:/opt/bitnami/spark/conf/configuration.conf
+      # - ./libs/jdbc/hadoop.jar:/opt/bitnami/spark/jars/hadoop-aws.jar
+      # - ./libs/jdbc/aws-sdk.jar:/opt/bitnami/spark/jars/aws-java-sdk-bundle.jar
+      # - ./libs/jdbc/iceberg-spark-runtime.jar:/opt/bitnami/spark/jars/iceberg-spark-runtime.jar
+      # - ./libs/jdbc/guava-30.1-jre.jar:/opt/bitnami/spark/jars/guava-30.1-jre.jar
+    networks:
+      - verdantiq-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8081 || exit 1"]
+      interval: 10s
+      timeout: 20s
+      retries: 3
+  iceberg-rest:
+    container_name: iceberg
+    build:
+      context: .
+      dockerfile: backend/iceberg/Dockerfile.iceberg
+    ports:
+      - "8181:8181"
+    environment:
+      - AWS_ACCESS_KEY_ID=admin
+      - AWS_SECRET_ACCESS_KEY=myminiopassword
+      - AWS_REGION=us-east-1
+      - CATALOG_WAREHOUSE=s3a://iceberg/
+      - CATALOG_IO__IMPL=org.apache.iceberg.aws.s3.S3FileIO
+      - CATALOG_S3_ENDPOINT=http://minio:9000
+      - CATALOG_S3_PATH-STYLE-ACCESS=true
+    depends_on:
+      spark-worker3:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -o /dev/null -w '%{http_code}' http://localhost:8181/v1/config | grep -q '200'"]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+
+  test-infra:
+    build:
+      context: .
+      dockerfile: backend/test-infra/Dockerfile
+    container_name: test-infra
+    networks:
+      - verdantiq-net
+    depends_on:
+      iceberg-rest:
+        condition: service_healthy
+    environment:
+      TEST_TIMEOUT: 300
+
+  
+volumes:
+  minio_data:
+  prometheus_data:
+  grafana_data:
+  zk_data1:
+  zk_log1:
+  zk_data2:
+  zk_log2:
+  spark_data:
+
+
+  

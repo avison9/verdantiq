@@ -1,0 +1,147 @@
+{
+  "id": null,
+  "uid": "kafka-pipeline-metrics",
+  "title": "Kafka Pipeline Metrics",
+  "tags": ["kafka", "spark", "agritech"],
+  "timezone": "browser",
+  "schemaVersion": 30,
+  "version": 1,
+  "refresh": "10s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Kafka Consumer Lag",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum(kafka_consumer_lag) by (topic, partition)",
+          "legendFormat": "{{topic}} (p{{partition}})",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Messages In/Out (Rate)",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "rate(kafka_topic_messages_in_total[1m])",
+          "legendFormat": "In ({{topic}})",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(kafka_topic_messages_out_total[1m])",
+          "legendFormat": "Out ({{topic}})",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Active Spark Tasks",
+      "gridPos": { "x": 0, "y": 8, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "spark_executor_tasks_active",
+          "legendFormat": "Tasks",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Failed Records (Last 5m)",
+      "gridPos": { "x": 6, "y": 8, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum(spark_streaming_failed_records_total)",
+          "legendFormat": "Errors",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Topic Partitions Count",
+      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "count(kafka_partition_count) by (topic)",
+          "legendFormat": "Partitions ({{topic}})",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Topic Offset (Max)",
+      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "max(kafka_offset_lag) by (topic, partition)",
+          "legendFormat": "{{topic}} (p{{partition}})",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Producers (Active)",
+      "gridPos": { "x": 0, "y": 20, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum(kafka_producer_active_count) by (topic)",
+          "legendFormat": "Producers ({{topic}})",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Consumers (Active)",
+      "gridPos": { "x": 6, "y": 20, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum(kafka_consumer_count) by (topic)",
+          "legendFormat": "Consumers ({{topic}})",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Replication Factor (Avg)",
+      "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "avg(kafka_replication_factor) by (topic)",
+          "legendFormat": "Replication ({{topic}})",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "type": "query",
+        "name": "topic",
+        "label": "Topic",
+        "datasource": "Prometheus",
+        "query": "label_values(kafka_consumer_lag, topic)",
+        "refresh": 1
+      }
+    ]
+  }
+}

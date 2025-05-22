@@ -1,1 +1,11 @@
 .env
+libs/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.vscode/
+.git/
+.pytest*
+v_env/

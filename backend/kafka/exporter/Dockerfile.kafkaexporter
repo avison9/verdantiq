@@ -1,0 +1,10 @@
+FROM danielqsj/kafka-exporter
+
+
+
+# Continue with the rest of your Dockerfile
+
+
+COPY backend/kafka/exporter/kafka-export-entrypoint.sh /kafka-export-entrypoint.sh
+
+ENTRYPOINT ["/kafka-export-entrypoint.sh"]

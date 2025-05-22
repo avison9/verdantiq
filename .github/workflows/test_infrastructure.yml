@@ -1,0 +1,38 @@
+name: Test Infrastructure Services
+
+on:
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  test-infrastructure:
+    runs-on: ubuntu-latest
+    services:
+      docker:
+        image: docker:dind
+        options: --privileged
+        
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    - name: Download jar files
+      run: bash util/spark-lib-downloader.sh
+      shell: bash
+      continue-on-error: false
+
+    - name: Build and start containers
+      run: |
+        docker compose up -d --build
+             
+    - name: Run infrastructure tests
+      run: |
+        docker compose run --rm test-infra bash -c "source /app/venv/bin/activate && python -m pytest tests/test_infrastructure.py"
+        
+    - name: Clean up
+      if: always()
+      run: docker compose down -v
+
