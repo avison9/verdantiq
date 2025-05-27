@@ -22,6 +22,8 @@ wget https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-common/3.3.6/hadoop
 
 wget https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-client/3.3.6/hadoop-client-3.3.6.jar -O backend/libs/jdbc/hadoop-client-3.3.6.jar
 
+wget https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-yarn-server-web-proxy/3.3.6/hadoop-yarn-server-web-proxy-3.3.6.jar -O backend/libs/jdbc/hadoop-yarn-server-web-proxy-3.3.6.jar
+
 # wget https://repo1.maven.org/maven2/org/apache/hive/hive-service-rpc/4.0.0-beta-1/hive-service-rpc-4.0.0-beta-1.jar -O backend/libs/jdbc/hive-service-rpc.jar
 
 # wget https://repo1.maven.org/maven2/io/delta/delta-core_2.12/3.1.0/delta-core_2.12-3.1.0.jar -O backend/libs/jdbc/delta-core.jar
