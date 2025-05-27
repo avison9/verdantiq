@@ -29,6 +29,10 @@ GRAFANA_USER =  "admin"
 GRAFANA_PASSWORD = "myDevPass123"
 PROMETHEUS_URL = "http://prometheus:9090"
 SPARK_MASTER = "spark://spark-master:7077"
+POSTGRES_HOST = "postgres"
+POSTGRES_DB = "verdantiq"
+POSTGRES_USER = "admin"
+POSTGRES_PASSWORD = "mypassword"
 TEST_TOPIC = "infra_test_topic"
 TEST_BUCKET = "test-sensor"
 WAIT_TIMEOUT = 60  
@@ -70,16 +74,21 @@ def spark_session():
             .appName("InfraTest") \
             .master(SPARK_MASTER) \
             .config("spark.jars.packages", "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.4.2,org.apache.hadoop:hadoop-aws:3.3.0,com.amazonaws:aws-java-sdk-bundle:1.12.100") \
-            .config("spark.sql.catalog.iceberg_catalog", "org.apache.iceberg.spark.SparkCatalog") \
-            .config("spark.sql.catalog.iceberg_catalog.type", "hadoop") \
-            .config("spark.sql.catalog.iceberg_catalog.warehouse", f"s3a://{TEST_BUCKET}/") \
+            .config("spark.executor.extraClassPath","/opt/spark/jars/*") \
+            .config("spark.driver.extraClassPath", "/opt/spark/jars/*") \
+            .config("spark.driver.extraJavaOptions", "-Dcom.amazonaws.services.s3.enableV4=true") \
+            .config("spark.sql.catalog.test_catalog", "org.apache.iceberg.spark.SparkCatalog") \
+            .config("spark.sql.catalog.test_catalog.type", "hadoop") \
+            .config("spark.sql.catalog.test_catalog.warehouse", f"s3a://{TEST_BUCKET}/") \
+            .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions") \
+            .config("spark.hadoop.fs.s3a.impl.disable.cache", "true") \
             .config("spark.hadoop.fs.s3a.endpoint", f"http://{MINIO_ENDPOINT}") \
             .config("spark.hadoop.fs.s3a.access.key", MINIO_ACCESS_KEY) \
             .config("spark.hadoop.fs.s3a.secret.key", MINIO_SECRET_KEY) \
             .config("spark.hadoop.fs.s3a.path.style.access", "true") \
-            .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
-            .config("spark.executor.memory", "1g") \
-            .config("spark.cores.max", "1") \
+            .config("spark.hadoop.fs.s3a.aws.credentials.provider", "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider") \
+            .config("spark.hadoop.fs.s3a.prefetch.enabled", "false") \
+            .config("spark.executor.memory", "2g") \
             .getOrCreate()
         yield spark
     finally:
@@ -190,6 +199,27 @@ def test_prometheus_metrics():
     response = requests.get(f"{PROMETHEUS_URL}/api/v1/targets")
     assert response.status_code == 200, "Prometheus API not accessible"
     assert any(t["labels"]["job"] == "kafka-exporter" for t in response.json()["data"]["activeTargets"]), "Kafka exporter not registered"
+
+def test_postgres_database():
+    """Test Postgres Database connectivity"""
+    assert wait_for_service(POSTGRES_HOST, 5432, service_name="Postgres"), "PostgreSQL not available"
+    try:
+        conn = psycopg2.connect(
+            host=POSTGRES_HOST,
+            database=POSTGRES_DB,
+            user=POSTGRES_USER,
+            password=POSTGRES_PASSWORD,
+            port=5432,
+            connect_timeout=15
+        )
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            assert cursor.fetchone()[0] == 1, "Postgres database not accessible"
+    except psycopg2.Error as e:
+        pytest.fail(f"Failed to connect to Postgres Database: {str(e)}")
+    finally:
+        if 'conn' in locals():
+            conn.close()
 
 def test_spark_cluster(spark_session):
     """Test Spark cluster connectivity"""

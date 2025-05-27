@@ -290,7 +290,8 @@ services:
       interval: 30s
       timeout: 20s
       retries: 3
-  
+
+# Using image from Apache Spark
   spark-master:
     build:
       context: .
@@ -304,9 +305,9 @@ services:
       - SPARK_SSL_ENABLED=no
       - SPARK_DAEMON_MEMORY=2g
       - SPARK_LOAD_SPARK_ICEBERG=true
-      - SPARK_CONF_DIR=/opt/bitnami/spark/conf
-      - SPARK_EXTRA_CLASSPATH=/opt/bitnami/spark/jars/iceberg-spark-runtime-3.5_2.12-1.4.2.jar:/opt/bitnami/spark/jars/hadoop-aws-3.3.6.jar:/opt/bitnami/spark/jars/aws-java-sdk-bundle-1.12.100.jar:/opt/bitnami/spark/jars/guava-30.1-jre.jar
-    
+      - SPARK_CONF_DIR=/opt/spark/conf
+      - HADOOP_PROXY_USER=root
+      - HADOOP_SECURITY_AUTHENTICATION=simple
     ports:
       - "8080:8080"
       - "7077:7077"
@@ -316,12 +317,7 @@ services:
       minio:
         condition: service_healthy
     volumes:
-      - spark_data:/bitnami
-      - ./backend/spark/config/configuration.conf:/opt/bitnami/spark/conf/configuration.conf
-      # - ./backend/libs/jdbc/hadoop.jar:/opt/bitnami/spark/jars/hadoop-aws.jar
-      # - ./libs/jdbc/aws-sdk.jar:/opt/bitnami/spark/jars/aws-java-sdk-bundle.jar
-      # - ./libs/jdbc/iceberg-spark-runtime.jar:/opt/bitnami/spark/jars/iceberg-spark-runtime.jar
-      # - ./libs/jdbc/guava-30.1-jre.jar:/opt/bitnami/spark/jars/guava-30.1-jre.jar
+      - spark_data:/opt/spark/data
       
     deploy:
       resources:
@@ -348,25 +344,21 @@ services:
       - SPARK_WORKER_MEMORY=16G
       - SPARK_WORKER_CORES=8
       - SPARK_LOAD_SPARK_ICEBERG=true
-      - SPARK_CONF_DIR=/opt/bitnami/spark/conf
-      - SPARK_EXTRA_CLASSPATH=/opt/bitnami/spark/jars/iceberg-spark-runtime-3.5_2.12-1.4.2.jar:/opt/bitnami/spark/jars/hadoop-aws-3.3.6.jar:/opt/bitnami/spark/jars/aws-java-sdk-bundle-1.12.100.jar:/opt/bitnami/spark/jars/guava-30.1-jre.jar
-    
+      - SPARK_CONF_DIR=/opt/spark/conf
+      - HADOOP_USER_NAME=root
+      - HADOOP_PROXY_USER=root
+      - HADOOP_SECURITY_AUTHENTICATION=simple
     ports:
       - "8081:8081"
     volumes:
-      - spark_data:/bitnami
-      - ./backend/spark/config/configuration.conf:/opt/bitnami/spark/conf/configuration.conf
-      # - ./libs/jdbc/hadoop.jar:/opt/bitnami/spark/jars/hadoop-aws.jar
-      # - ./libs/jdbc/aws-sdk.jar:/opt/bitnami/spark/jars/aws-java-sdk-bundle.jar
-      # - ./libs/jdbc/iceberg-spark-runtime.jar:/opt/bitnami/spark/jars/iceberg-spark-runtime.jar
-      # - ./libs/jdbc/guava-30.1-jre.jar:/opt/bitnami/spark/jars/guava-30.1-jre.jar
+      - spark_data:/opt/spark/data
     networks:
       - verdantiq-net
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8081 || exit 1"]
-      interval: 10s
-      timeout: 20s
-      retries: 3
+      interval: 20s
+      timeout: 30s
+      retries: 5
 
   spark-worker2:
     build:
@@ -382,25 +374,21 @@ services:
       - SPARK_WORKER_MEMORY=16G
       - SPARK_WORKER_CORES=8
       - SPARK_LOAD_SPARK_ICEBERG=true
-      - SPARK_CONF_DIR=/opt/bitnami/spark/conf
-      - SPARK_EXTRA_CLASSPATH=/opt/bitnami/spark/jars/iceberg-spark-runtime-3.5_2.12-1.4.2.jar:/opt/bitnami/spark/jars/hadoop-aws-3.3.6.jar:/opt/bitnami/spark/jars/aws-java-sdk-bundle-1.12.100.jar:/opt/bitnami/spark/jars/guava-30.1-jre.jar
-    
+      - SPARK_CONF_DIR=/opt/spark/conf
+      - HADOOP_USER_NAME=root
+      - HADOOP_PROXY_USER=root
+      - HADOOP_SECURITY_AUTHENTICATION=simple
     ports:
       - "8082:8081"
     volumes:
-      - spark_data:/bitnami
-      - ./backend/spark/config/configuration.conf:/opt/bitnami/spark/conf/configuration.conf
-      # - ./libs/jdbc/hadoop.jar:/opt/bitnami/spark/jars/hadoop-aws.jar
-      # - ./libs/jdbc/aws-sdk.jar:/opt/bitnami/spark/jars/aws-java-sdk-bundle.jar
-      # - ./libs/jdbc/iceberg-spark-runtime.jar:/opt/bitnami/spark/jars/iceberg-spark-runtime.jar
-      # - ./libs/jdbc/guava-30.1-jre.jar:/opt/bitnami/spark/jars/guava-30.1-jre.jar
+      - spark_data:/opt/spark/data
     networks:
       - verdantiq-net
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8081 || exit 1"]
-      interval: 10s
-      timeout: 20s
-      retries: 3
+      interval: 20s
+      timeout: 30s
+      retries: 5
 
   spark-worker3:
     build:
@@ -416,25 +404,22 @@ services:
       - SPARK_WORKER_MEMORY=16G
       - SPARK_WORKER_CORES=8
       - SPARK_LOAD_SPARK_ICEBERG=true
-      - SPARK_CONF_DIR=/opt/bitnami/spark/conf
-      - SPARK_EXTRA_CLASSPATH=/opt/bitnami/spark/jars/iceberg-spark-runtime-3.5_2.12-1.4.2.jar:/opt/bitnami/spark/jars/hadoop-aws-3.3.6.jar:/opt/bitnami/spark/jars/aws-java-sdk-bundle-1.12.100.jar:/opt/bitnami/spark/jars/guava-30.1-jre.jar
-
+      - SPARK_CONF_DIR=/opt/spark/conf
+      - HADOOP_USER_NAME=root
+      - HADOOP_PROXY_USER=root
+      - HADOOP_SECURITY_AUTHENTICATION=simple
     ports:
       - "8083:8081"
     volumes:
-      - spark_data:/bitnami
-      - ./backend/spark/config/configuration.conf:/opt/bitnami/spark/conf/configuration.conf
-      # - ./libs/jdbc/hadoop.jar:/opt/bitnami/spark/jars/hadoop-aws.jar
-      # - ./libs/jdbc/aws-sdk.jar:/opt/bitnami/spark/jars/aws-java-sdk-bundle.jar
-      # - ./libs/jdbc/iceberg-spark-runtime.jar:/opt/bitnami/spark/jars/iceberg-spark-runtime.jar
-      # - ./libs/jdbc/guava-30.1-jre.jar:/opt/bitnami/spark/jars/guava-30.1-jre.jar
+      - spark_data:/opt/spark/data
     networks:
       - verdantiq-net
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8081 || exit 1"]
-      interval: 10s
-      timeout: 20s
-      retries: 3
+      interval: 20s
+      timeout: 30s
+      retries: 5
+
   iceberg-rest:
     container_name: iceberg
     build:
@@ -458,6 +443,28 @@ services:
       interval: 10s
       timeout: 10s
       retries: 3
+  
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    environment:
+      POSTGRES_DB: verdantiq
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: mypassword
+    ports:
+      - "5432:5432"
+    networks:
+      - verdantiq-net
+    depends_on:
+      iceberg-rest:
+        condition: service_healthy
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d verdantiq"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   test-infra:
     build:
@@ -467,7 +474,7 @@ services:
     networks:
       - verdantiq-net
     depends_on:
-      iceberg-rest:
+      postgres:
         condition: service_healthy
     environment:
       TEST_TIMEOUT: 300
@@ -482,6 +489,7 @@ volumes:
   zk_data2:
   zk_log2:
   spark_data:
+  pg_data:
 
 
   
