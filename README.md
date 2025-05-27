@@ -10,7 +10,7 @@
 - 🌦️ Weather and market data 
 - 🛰️ Satellite NDVI data processing
 - 🧠 Predictive ML for moisture, disease, and yield
-- 🗃️ Star-schema warehouse in Snowflake (or Hive)
+- 🗃️ Star-schema warehouse in Snowflake (or Iceberg)
 - 📊 Dashboards via Power BI / Superset
 
 ---
@@ -22,8 +22,9 @@
 | **Ingestion** | Kafka, Schema Registry, Avro |
 | **ETL/Streaming** | Apache Spark Structured Streaming, Airflow |
 | **Storage** | S3, HDFS, GCS |
-| **Warehouse** | Snowflake / Hive |
+| **Warehouse** | Snowflake / Iceberg |
 | **Databases** | PostgreSQL, MongoDB |
+| **APIs** | FastAPI |
 | **Change Data Capture** | Debezium, Kafka Connect |
 | **ML** | Python, Scikit-learn, Spark MLlib |
 | **Dashboards** | Power BI, Apache Superset |
