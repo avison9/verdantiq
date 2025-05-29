@@ -16,7 +16,7 @@ RUN apt-get update && \
 
 RUN rm -f /opt/spark/jars/guava-*.jar
 
-# RUN rm -f /opt/spark/jars/hadoo-*.jar
+RUN rm -f /opt/spark/jars/hadoo*.jar
 
 
 COPY --chown=spark:spark backend/libs/jdbc/iceberg-spark-runtime-3.5_2.12-1.4.2.jar \
@@ -27,6 +27,7 @@ COPY --chown=spark:spark backend/libs/jdbc/iceberg-spark-runtime-3.5_2.12-1.4.2.
      backend/libs/jdbc/hadoop-client-api-3.3.6.jar \
      backend/libs/jdbc/hadoop-client-runtime-3.3.6.jar \
      backend/libs/jdbc/hadoop-yarn-server-web-proxy-3.3.6.jar \
+     backend/libs/jdbc/delta-core_2.12-2.4.0.jar \
      /opt/spark/jars/
 
 
