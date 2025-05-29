@@ -73,14 +73,16 @@ def spark_session():
         spark = SparkSession.builder \
             .appName("InfraTest") \
             .master(SPARK_MASTER) \
-            .config("spark.jars.packages", "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.4.2,org.apache.hadoop:hadoop-aws:3.3.0,com.amazonaws:aws-java-sdk-bundle:1.12.100") \
+            .config("spark.jars.packages", "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.4.2,org.apache.hadoop:hadoop-aws:3.3.0,com.amazonaws:aws-java-sdk-bundle:1.12.100,io.delta:delta-core_2.12:2.4.0") \
             .config("spark.executor.extraClassPath","/opt/spark/jars/*") \
-            .config("spark.driver.extraClassPath", "/opt/spark/jars/*") \
+            .config("spark.driver.extraClassPath", "/app/jars/*") \
+            .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension,org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions") \
             .config("spark.driver.extraJavaOptions", "-Dcom.amazonaws.services.s3.enableV4=true") \
             .config("spark.sql.catalog.test_catalog", "org.apache.iceberg.spark.SparkCatalog") \
             .config("spark.sql.catalog.test_catalog.type", "hadoop") \
+            .config("spark.sql.catalog.test_delta", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
             .config("spark.sql.catalog.test_catalog.warehouse", f"s3a://{TEST_BUCKET}/") \
-            .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions") \
+            .config("spark.sql.catalog.test_delta.warehouse", f"s3a://test-delta-sensor/") \
             .config("spark.hadoop.fs.s3a.impl.disable.cache", "true") \
             .config("spark.hadoop.fs.s3a.endpoint", f"http://{MINIO_ENDPOINT}") \
             .config("spark.hadoop.fs.s3a.access.key", MINIO_ACCESS_KEY) \
@@ -88,7 +90,6 @@ def spark_session():
             .config("spark.hadoop.fs.s3a.path.style.access", "true") \
             .config("spark.hadoop.fs.s3a.aws.credentials.provider", "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider") \
             .config("spark.hadoop.fs.s3a.prefetch.enabled", "false") \
-            .config("spark.executor.memory", "2g") \
             .getOrCreate()
         yield spark
     finally:
@@ -169,7 +170,9 @@ def test_minio_operations(minio_client):
     
     if minio_client.bucket_exists(TEST_BUCKET):
         try:
-            minio_client.remove_bucket(TEST_BUCKET)
+            for obj in minio_client.list_objects(TEST_BUCKET, recursive=True):
+                minio_client.remove_object(TEST_BUCKET, obj.object_name)
+                minio_client.remove_bucket(TEST_BUCKET)
         except S3Error as e:
             pytest.fail(f"Failed to clean up test bucket: {str(e)}")
     
@@ -226,6 +229,51 @@ def test_spark_cluster(spark_session):
     data = [("Test", 1), ("Infra", 2)]
     df = spark_session.createDataFrame(data, ["Name", "Value"])
     assert df.count() == 2, "Spark DataFrame count mismatch"
+
+
+def test_iceberg_write_to_minio(spark_session, minio_client):
+    """Test writing Iceberg table data to MinIO (S3)"""
+    db = "db"
+    table = "test_table"
+    catalog = "test_catalog"
+    table_path = f"{catalog}.{db}.{table}"
+    s3_path_prefix = f"db/{table}/"
+
+    try:
+
+        if not minio_client.bucket_exists(TEST_BUCKET):
+            minio_client.make_bucket(TEST_BUCKET)
+
+        spark_session.sql(f"CREATE DATABASE IF NOT EXISTS {catalog}.{db}")
+        spark_session.sql(f"CREATE TABLE IF NOT EXISTS {table_path} (id INT, name STRING) USING iceberg")
+
+        spark_session.sql(f"INSERT INTO {table_path} VALUES (1, 'alpha'), (2, 'beta')")
+        spark_session.catalog.refreshTable(table_path)
+
+        
+        result = spark_session.sql(f"SELECT * FROM {table_path}").collect()
+        assert len(result) == 2, "Iceberg row count mismatch"
+
+        
+        files = minio_client.list_objects(TEST_BUCKET, prefix=s3_path_prefix, recursive=True)
+        files_found = [obj.object_name for obj in files if re.search(r'\.(parquet|avro|orc)$', obj.object_name)]
+        assert len(files_found) > 0, f"No Iceberg data files found in S3 path: {s3_path_prefix}"
+
+    except Exception as e:
+        pytest.fail(f"Iceberg write to MinIO failed: {str(e)}")
+    
+    finally:
+        try:
+            spark_session.sql(f"DROP TABLE IF EXISTS {table_path}")
+            spark_session.sql(f"DROP DATABASE IF EXISTS {catalog}.{db} CASCADE")
+        except Exception as e:
+            print(f"Warning: Failed to drop Iceberg table or DB: {e}")
+        try:
+            for obj in minio_client.list_objects(TEST_BUCKET, recursive=True):
+                minio_client.remove_object(TEST_BUCKET, obj.object_name)
+            minio_client.remove_bucket(TEST_BUCKET)
+        except Exception as e:
+            print(f"Warning: Failed to clean up bucket {TEST_BUCKET}: {e}")
 
 
 if __name__ == "__main__":
