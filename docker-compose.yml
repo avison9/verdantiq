@@ -303,7 +303,7 @@ services:
       - SPARK_RPC_ENCRYPTION_ENABLED=no
       - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
       - SPARK_SSL_ENABLED=no
-      - SPARK_DAEMON_MEMORY=2g
+      - SPARK_DAEMON_MEMORY=1g
       - SPARK_LOAD_SPARK_ICEBERG=true
       - SPARK_CONF_DIR=/opt/spark/conf
       - HADOOP_PROXY_USER=root
@@ -318,17 +318,16 @@ services:
         condition: service_healthy
     volumes:
       - spark_data:/opt/spark/data
-      
     deploy:
       resources:
         limits:
-          cpus: '2'
-          memory: 4G
+          cpus: '0.25'
+          memory: 1G
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8080 || exit 1"]
-      interval: 10s
-      timeout: 20s
-      retries: 3
+      interval: 30s
+      timeout: 30s
+      retries: 5
 
   spark-worker1:
     build:
@@ -341,8 +340,8 @@ services:
     environment:
       - SPARK_MODE=worker
       - SPARK_MASTER_URL=spark://spark-master:7077
-      - SPARK_WORKER_MEMORY=16G
-      - SPARK_WORKER_CORES=8
+      - SPARK_WORKER_MEMORY=1000M
+      - SPARK_WORKER_CORES=1
       - SPARK_LOAD_SPARK_ICEBERG=true
       - SPARK_CONF_DIR=/opt/spark/conf
       - HADOOP_USER_NAME=root
@@ -354,6 +353,11 @@ services:
       - spark_data:/opt/spark/data
     networks:
       - verdantiq-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 1G
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8081 || exit 1"]
       interval: 20s
@@ -371,8 +375,8 @@ services:
     environment:
       - SPARK_MODE=worker
       - SPARK_MASTER_URL=spark://spark-master:7077
-      - SPARK_WORKER_MEMORY=16G
-      - SPARK_WORKER_CORES=8
+      - SPARK_WORKER_MEMORY=1000M
+      - SPARK_WORKER_CORES=1
       - SPARK_LOAD_SPARK_ICEBERG=true
       - SPARK_CONF_DIR=/opt/spark/conf
       - HADOOP_USER_NAME=root
@@ -384,6 +388,11 @@ services:
       - spark_data:/opt/spark/data
     networks:
       - verdantiq-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 1G
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8081 || exit 1"]
       interval: 20s
@@ -401,8 +410,8 @@ services:
     environment:
       - SPARK_MODE=worker
       - SPARK_MASTER_URL=spark://spark-master:7077
-      - SPARK_WORKER_MEMORY=16G
-      - SPARK_WORKER_CORES=8
+      - SPARK_WORKER_MEMORY=1000M
+      - SPARK_WORKER_CORES=1
       - SPARK_LOAD_SPARK_ICEBERG=true
       - SPARK_CONF_DIR=/opt/spark/conf
       - HADOOP_USER_NAME=root
@@ -414,6 +423,11 @@ services:
       - spark_data:/opt/spark/data
     networks:
       - verdantiq-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 1G
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8081 || exit 1"]
       interval: 20s
