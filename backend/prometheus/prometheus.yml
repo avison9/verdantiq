@@ -14,10 +14,12 @@ scrape_configs:
   - job_name: 'spark-master'
     static_configs:
       - targets: ['spark-master:8080']
+    metrics_path: '/metrics/prometheus'
 
   - job_name: 'spark-workers'
     static_configs:
       - targets: ['spark-worker1:8081', 'spark-worker2:8081', 'spark-worker3:8081']
+    metrics_path: '/metrics/prometheus'
   
 
 
