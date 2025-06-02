@@ -43,6 +43,8 @@ ENV HADOOP_SECURITY_AUTHENTICATION=simple
 
 COPY backend/spark/spark-entrypoint.sh /entrypoint.sh
 
+COPY backend/spark/metrics.properties /opt/spark/conf/metrics.properties
+
 RUN chmod +x /entrypoint.sh
 
 USER spark
