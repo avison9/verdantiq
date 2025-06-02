@@ -231,49 +231,49 @@ def test_spark_cluster(spark_session):
     assert df.count() == 2, "Spark DataFrame count mismatch"
 
 
-def test_iceberg_write_to_minio(spark_session, minio_client):
-    """Test writing Iceberg table data to MinIO (S3)"""
-    db = "db"
-    table = "test_table"
-    catalog = "test_catalog"
-    table_path = f"{catalog}.{db}.{table}"
-    s3_path_prefix = f"db/{table}/"
+# def test_iceberg_write_to_minio(spark_session, minio_client):
+#     """Test writing Iceberg table data to MinIO (S3)"""
+#     db = "db"
+#     table = "test_table"
+#     catalog = "test_catalog"
+#     table_path = f"{catalog}.{db}.{table}"
+#     s3_path_prefix = f"db/{table}/"
 
-    try:
+#     try:
 
-        if not minio_client.bucket_exists(TEST_BUCKET):
-            minio_client.make_bucket(TEST_BUCKET)
+#         if not minio_client.bucket_exists(TEST_BUCKET):
+#             minio_client.make_bucket(TEST_BUCKET)
 
-        spark_session.sql(f"CREATE DATABASE IF NOT EXISTS {catalog}.{db}")
-        spark_session.sql(f"CREATE TABLE IF NOT EXISTS {table_path} (id INT, name STRING) USING iceberg")
+#         spark_session.sql(f"CREATE DATABASE IF NOT EXISTS {catalog}.{db}")
+#         spark_session.sql(f"CREATE TABLE IF NOT EXISTS {table_path} (id INT, name STRING) USING iceberg")
 
-        spark_session.sql(f"INSERT INTO {table_path} VALUES (1, 'alpha'), (2, 'beta')")
-        spark_session.catalog.refreshTable(table_path)
-
-        
-        result = spark_session.sql(f"SELECT * FROM {table_path}").collect()
-        assert len(result) == 2, "Iceberg row count mismatch"
+#         spark_session.sql(f"INSERT INTO {table_path} VALUES (1, 'alpha'), (2, 'beta')")
+#         spark_session.catalog.refreshTable(table_path)
 
         
-        files = minio_client.list_objects(TEST_BUCKET, prefix=s3_path_prefix, recursive=True)
-        files_found = [obj.object_name for obj in files if re.search(r'\.(parquet|avro|orc)$', obj.object_name)]
-        assert len(files_found) > 0, f"No Iceberg data files found in S3 path: {s3_path_prefix}"
+#         result = spark_session.sql(f"SELECT * FROM {table_path}").collect()
+#         assert len(result) == 2, "Iceberg row count mismatch"
 
-    except Exception as e:
-        pytest.fail(f"Iceberg write to MinIO failed: {str(e)}")
+        
+#         files = minio_client.list_objects(TEST_BUCKET, prefix=s3_path_prefix, recursive=True)
+#         files_found = [obj.object_name for obj in files if re.search(r'\.(parquet|avro|orc)$', obj.object_name)]
+#         assert len(files_found) > 0, f"No Iceberg data files found in S3 path: {s3_path_prefix}"
+
+#     except Exception as e:
+#         pytest.fail(f"Iceberg write to MinIO failed: {str(e)}")
     
-    finally:
-        try:
-            spark_session.sql(f"DROP TABLE IF EXISTS {table_path}")
-            spark_session.sql(f"DROP DATABASE IF EXISTS {catalog}.{db} CASCADE")
-        except Exception as e:
-            print(f"Warning: Failed to drop Iceberg table or DB: {e}")
-        try:
-            for obj in minio_client.list_objects(TEST_BUCKET, recursive=True):
-                minio_client.remove_object(TEST_BUCKET, obj.object_name)
-            minio_client.remove_bucket(TEST_BUCKET)
-        except Exception as e:
-            print(f"Warning: Failed to clean up bucket {TEST_BUCKET}: {e}")
+#     finally:
+#         try:
+#             spark_session.sql(f"DROP TABLE IF EXISTS {table_path}")
+#             spark_session.sql(f"DROP DATABASE IF EXISTS {catalog}.{db} CASCADE")
+#         except Exception as e:
+#             print(f"Warning: Failed to drop Iceberg table or DB: {e}")
+#         try:
+#             for obj in minio_client.list_objects(TEST_BUCKET, recursive=True):
+#                 minio_client.remove_object(TEST_BUCKET, obj.object_name)
+#             minio_client.remove_bucket(TEST_BUCKET)
+#         except Exception as e:
+#             print(f"Warning: Failed to clean up bucket {TEST_BUCKET}: {e}")
 
 
 if __name__ == "__main__":

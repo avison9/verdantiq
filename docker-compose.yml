@@ -339,7 +339,6 @@ services:
   #       condition: service_healthy
   #   environment:
   #     - SPARK_MODE=worker
-  #     - SPARK_MASTER_URL=spark://spark-master:7077
   #     - SPARK_WORKER_MEMORY=1000M
   #     - SPARK_WORKER_CORES=1
   #     - SPARK_LOAD_SPARK_ICEBERG=true
