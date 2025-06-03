@@ -329,74 +329,74 @@ services:
       timeout: 30s
       retries: 5
 
-  spark-worker1:
-    build:
-      context: .
-      dockerfile: backend/spark/Dockerfile.spark
-    container_name: spark-worker1
-    depends_on:
-      spark-master:
-        condition: service_healthy
-    environment:
-      - SPARK_MODE=worker
-      - SPARK_WORKER_MEMORY=1000M
-      - SPARK_WORKER_CORES=1
-      - SPARK_LOAD_SPARK_ICEBERG=true
-      - SPARK_CONF_DIR=/opt/spark/conf
-      - HADOOP_USER_NAME=root
-      - HADOOP_PROXY_USER=root
-      - HADOOP_SECURITY_AUTHENTICATION=simple
-    ports:
-      - "8081:8081"
-    volumes:
-      - spark_data:/opt/spark/data
-    networks:
-      - verdantiq-net
-    deploy:
-      resources:
-        limits:
-          cpus: '0.25'
-          memory: 1G
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8081 || exit 1"]
-      interval: 20s
-      timeout: 30s
-      retries: 5
+  # spark-worker1:
+  #   build:
+  #     context: .
+  #     dockerfile: backend/spark/Dockerfile.spark
+  #   container_name: spark-worker1
+  #   depends_on:
+  #     spark-master:
+  #       condition: service_healthy
+  #   environment:
+  #     - SPARK_MODE=worker
+  #     - SPARK_WORKER_MEMORY=1000M
+  #     - SPARK_WORKER_CORES=1
+  #     - SPARK_LOAD_SPARK_ICEBERG=true
+  #     - SPARK_CONF_DIR=/opt/spark/conf
+  #     - HADOOP_USER_NAME=root
+  #     - HADOOP_PROXY_USER=root
+  #     - HADOOP_SECURITY_AUTHENTICATION=simple
+  #   ports:
+  #     - "8081:8081"
+  #   volumes:
+  #     - spark_data:/opt/spark/data
+  #   networks:
+  #     - verdantiq-net
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '0.25'
+  #         memory: 1G
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "curl -fsS http://localhost:8081 || exit 1"]
+  #     interval: 20s
+  #     timeout: 30s
+  #     retries: 5
 
-  spark-worker2:
-    build:
-      context: .
-      dockerfile: backend/spark/Dockerfile.spark
-    container_name: spark-worker2
-    depends_on:
-      spark-master:
-        condition: service_healthy
-    environment:
-      - SPARK_MODE=worker
-      - SPARK_MASTER_URL=spark://spark-master:7077
-      - SPARK_WORKER_MEMORY=1000M
-      - SPARK_WORKER_CORES=1
-      - SPARK_LOAD_SPARK_ICEBERG=true
-      - SPARK_CONF_DIR=/opt/spark/conf
-      - HADOOP_USER_NAME=root
-      - HADOOP_PROXY_USER=root
-      - HADOOP_SECURITY_AUTHENTICATION=simple
-    ports:
-      - "8082:8081"
-    volumes:
-      - spark_data:/opt/spark/data
-    networks:
-      - verdantiq-net
-    deploy:
-      resources:
-        limits:
-          cpus: '0.25'
-          memory: 1G
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8081 || exit 1"]
-      interval: 20s
-      timeout: 30s
-      retries: 5
+  # spark-worker2:
+  #   build:
+  #     context: .
+  #     dockerfile: backend/spark/Dockerfile.spark
+  #   container_name: spark-worker2
+  #   depends_on:
+  #     spark-master:
+  #       condition: service_healthy
+  #   environment:
+  #     - SPARK_MODE=worker
+  #     - SPARK_MASTER_URL=spark://spark-master:7077
+  #     - SPARK_WORKER_MEMORY=1000M
+  #     - SPARK_WORKER_CORES=1
+  #     - SPARK_LOAD_SPARK_ICEBERG=true
+  #     - SPARK_CONF_DIR=/opt/spark/conf
+  #     - HADOOP_USER_NAME=root
+  #     - HADOOP_PROXY_USER=root
+  #     - HADOOP_SECURITY_AUTHENTICATION=simple
+  #   ports:
+  #     - "8082:8081"
+  #   volumes:
+  #     - spark_data:/opt/spark/data
+  #   networks:
+  #     - verdantiq-net
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '0.25'
+  #         memory: 1G
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "curl -fsS http://localhost:8081 || exit 1"]
+  #     interval: 20s
+  #     timeout: 30s
+  #     retries: 5
 
   spark-worker3:
     build:
@@ -409,8 +409,8 @@ services:
     environment:
       - SPARK_MODE=worker
       - SPARK_MASTER_URL=spark://spark-master:7077
-      - SPARK_WORKER_MEMORY=1000M
-      - SPARK_WORKER_CORES=1
+      - SPARK_WORKER_MEMORY=2000M
+      - SPARK_WORKER_CORES=2
       - SPARK_LOAD_SPARK_ICEBERG=true
       - SPARK_CONF_DIR=/opt/spark/conf
       - HADOOP_USER_NAME=root
@@ -425,8 +425,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.25'
-          memory: 1G
+          cpus: '2'
+          memory: 2G
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8081 || exit 1"]
       interval: 20s
