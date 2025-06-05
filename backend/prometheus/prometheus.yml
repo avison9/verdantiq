@@ -18,8 +18,31 @@ scrape_configs:
 
   - job_name: 'spark-workers'
     static_configs:
-      - targets: ['spark-worker1:8081', 'spark-worker2:8081', 'spark-worker3:8081']
+      - targets: ['spark-worker3:8081']
     metrics_path: '/metrics/prometheus'
+  
+
+  # - job_name: 'spark-workers'
+  #   static_configs:
+  #     - targets: ['spark-worker1:8081', 'spark-worker2:8081', 'spark-worker3:8081']
+  #   metrics_path: '/metrics/prometheus'
+
+
+  # - job_name: 'kafka'
+  #   static_configs:
+  #     - targets: ['kafka1:27071', 'kafka2:27072', 'kafka3:27073', 'kafka4:27074']
+  # - job_name: 'kafka_exporter'
+  #   static_configs:
+  #     - targets: ['kafka-exporter:9308']
+  # - job_name: 'spark_master'
+  #   static_configs:
+  #     - targets: ['spark-master:27075']
+  # - job_name: 'spark_worker'
+  #   static_configs:
+  #     - targets: ['spark-worker3:27078']
+  # - job_name: 'prometheus'
+  #   static_configs:
+  #     - targets: ['prometheus:9090']
   
 
 

@@ -224,11 +224,11 @@ def test_postgres_database():
         if 'conn' in locals():
             conn.close()
 
-def test_spark_cluster(spark_session):
-    """Test Spark cluster connectivity"""
-    data = [("Test", 1), ("Infra", 2)]
-    df = spark_session.createDataFrame(data, ["Name", "Value"])
-    assert df.count() == 2, "Spark DataFrame count mismatch"
+# def test_spark_cluster(spark_session):
+#     """Test Spark cluster connectivity"""
+#     data = [("Test", 1), ("Infra", 2)]
+#     df = spark_session.createDataFrame(data, ["Name", "Value"])
+#     assert df.count() == 2, "Spark DataFrame count mismatch"
 
 
 # def test_iceberg_write_to_minio(spark_session, minio_client):

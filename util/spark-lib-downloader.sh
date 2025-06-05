@@ -25,6 +25,16 @@ wget https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-client/3.3.6/hadoop
 wget https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-yarn-server-web-proxy/3.3.6/hadoop-yarn-server-web-proxy-3.3.6.jar -O backend/libs/jdbc/hadoop-yarn-server-web-proxy-3.3.6.jar
 
 wget https://repo1.maven.org/maven2/io/delta/delta-core_2.12/2.4.0/delta-core_2.12-2.4.0.jar -O backend/libs/jdbc/delta-core_2.12-2.4.0.jar
+
+wget https://repo1.maven.org/maven2/org/apache/spark/spark-sql-kafka-0-10_2.12/3.5.1/spark-sql-kafka-0-10_2.12-3.5.1.jar -O spark-sql-kafka-0-10_2.12-3.5.1.jar
+
+wget https://repo1.maven.org/maven2/org/apache/spark/spark-avro_2.12/3.5.1/spark-avro_2.12-3.5.1.jar -O spark-avro_2.12-3.5.1.jar
+
+wget https://packages.confluent.io/maven/io/confluent/kafka-schema-registry-client/7.7.0/kafka-schema-registry-client-7.7.0.jar -O kafka-schema-registry-client-7.7.0.jar
+
+wget https://packages.confluent.io/maven/io/confluent/kafka-avro-serializer/7.7.0/kafka-avro-serializer-7.7.0.jar -O kafka-avro-serializer-7.7.0.jar
+
+wget https://repo1.maven.org/maven2/org/apache/kafka/kafka-clients/3.4.0/kafka-clients-3.4.0.jar -O kafka-clients-3.4.0.jar
 # wget https://repo1.maven.org/maven2/org/apache/hive/hive-service-rpc/4.0.0-beta-1/hive-service-rpc-4.0.0-beta-1.jar -O backend/libs/jdbc/hive-service-rpc.jar
 
 # wget https://repo1.maven.org/maven2/io/delta/delta-core_2.12/3.1.0/delta-core_2.12-3.1.0.jar -O backend/libs/jdbc/delta-core.jar
