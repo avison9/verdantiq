@@ -67,8 +67,15 @@ services:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka1:9092,PLAINTEXT_HOST://localhost:19092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      # KAFKA_JMX_PORT: 9999
+      # KAFKA_JMX_OPTS: "-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.rmi.port=9999"
+      # KAFKA_OPTS: "-javaagent:/opt/kafka/libs/jmx_prometheus_javaagent.jar=27071:/opt/kafka/libs/kafka-jmx-exporter.yml"
     ports:
       - "19092:19092"
+      # - "27071:27071" 
+    # volumes:
+    #   - ./backend/prometheus/jmx_prometheus_javaagent.jar:/opt/kafka/libs/jmx_prometheus_javaagent.jar
+    #   - ./backend/prometheus/kafka-jmx-exporter.yml:/opt/kafka/libs/kafka-jmx-exporter.yml
     networks:
       - verdantiq-net
     healthcheck:
@@ -92,8 +99,15 @@ services:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka2:9093,PLAINTEXT_HOST://localhost:19093
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      # KAFKA_JMX_PORT: 9999
+      # KAFKA_JMX_OPTS: "-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.rmi.port=9999"
+      # KAFKA_OPTS: "-javaagent:/opt/kafka/libs/jmx_prometheus_javaagent.jar=27072:/opt/kafka/libs/kafka-jmx-exporter.yml"
     ports:
       - "19093:19093"
+      # - "27072:27072"
+    # volumes:
+    #   - ./backend/prometheus/jmx_prometheus_javaagent.jar:/opt/kafka/libs/jmx_prometheus_javaagent.jar
+    #   - ./backend/prometheus/kafka-jmx-exporter.yml:/opt/kafka/libs/kafka-jmx-exporter.yml
     networks:
       - verdantiq-net
     healthcheck:
@@ -116,8 +130,15 @@ services:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka3:9094,PLAINTEXT_HOST://localhost:19094
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      # KAFKA_JMX_PORT: 9999
+      # KAFKA_JMX_OPTS: "-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.rmi.port=9999"
+      # KAFKA_OPTS: "-javaagent:/opt/kafka/libs/jmx_prometheus_javaagent.jar=27073:/opt/kafka/libs/kafka-jmx-exporter.yml"
     ports:
       - "19094:19094"
+      # - "27073:27073"
+    # volumes:
+    #   - ./backend/prometheus/jmx_prometheus_javaagent.jar:/opt/kafka/libs/jmx_prometheus_javaagent.jar
+    #   - ./backend/prometheus/kafka-jmx-exporter.yml:/opt/kafka/libs/kafka-jmx-exporter.yml
     networks:
       - verdantiq-net
     healthcheck:
@@ -140,8 +161,15 @@ services:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka4:9095,PLAINTEXT_HOST://localhost:19095
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      # KAFKA_JMX_PORT: 9999
+      # KAFKA_JMX_OPTS: "-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.rmi.port=9999"
+      # KAFKA_OPTS: "-javaagent:/opt/kafka/libs/jmx_prometheus_javaagent.jar=27074:/opt/kafka/libs/kafka-jmx-exporter.yml"
     ports:
       - "19095:19095"
+    #   - "27074:27074"
+    # volumes:
+    #   - ./backend/prometheus/jmx_prometheus_javaagent.jar:/opt/kafka/libs/jmx_prometheus_javaagent.jar
+    #   - ./backend/prometheus/kafka-jmx-exporter.yml:/opt/kafka/libs/kafka-jmx-exporter.yml
     networks:
       - verdantiq-net
     healthcheck:
@@ -308,9 +336,11 @@ services:
       - SPARK_CONF_DIR=/opt/spark/conf
       - HADOOP_PROXY_USER=root
       - HADOOP_SECURITY_AUTHENTICATION=simple
+      # - SPARK_DAEMON_JAVA_OPTS=-javaagent:/opt/spark/jmx_prometheus_javaagent.jar=27075:/opt/spark/spark-jmx-exporter.yml -Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.rmi.port=9997
     ports:
       - "8080:8080"
       - "7077:7077"
+      # - "27075:27075" 
     networks:
       - verdantiq-net
     depends_on:
@@ -329,74 +359,78 @@ services:
       timeout: 30s
       retries: 5
 
-  spark-worker1:
-    build:
-      context: .
-      dockerfile: backend/spark/Dockerfile.spark
-    container_name: spark-worker1
-    depends_on:
-      spark-master:
-        condition: service_healthy
-    environment:
-      - SPARK_MODE=worker
-      - SPARK_WORKER_MEMORY=2000M
-      - SPARK_WORKER_CORES=2
-      - SPARK_LOAD_SPARK_ICEBERG=true
-      - SPARK_CONF_DIR=/opt/spark/conf
-      - HADOOP_USER_NAME=root
-      - HADOOP_PROXY_USER=root
-      - HADOOP_SECURITY_AUTHENTICATION=simple
-    ports:
-      - "8081:8081"
-    volumes:
-      - spark_data:/opt/spark/data
-    networks:
-      - verdantiq-net
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 2G
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8081 || exit 1"]
-      interval: 20s
-      timeout: 30s
-      retries: 5
+  # spark-worker1:
+  #   build:
+  #     context: .
+  #     dockerfile: backend/spark/Dockerfile.spark
+  #   container_name: spark-worker1
+  #   depends_on:
+  #     spark-master:
+  #       condition: service_healthy
+  #   environment:
+  #     - SPARK_MODE=worker
+  #     - SPARK_WORKER_MEMORY=2000M
+  #     - SPARK_WORKER_CORES=2
+  #     - SPARK_LOAD_SPARK_ICEBERG=true
+  #     - SPARK_CONF_DIR=/opt/spark/conf
+  #     - HADOOP_USER_NAME=root
+  #     - HADOOP_PROXY_USER=root
+  #     - HADOOP_SECURITY_AUTHENTICATION=simple
+  #     - SPARK_DAEMON_JAVA_OPTS=-javaagent:/opt/spark/jmx_prometheus_javaagent.jar=27076:/opt/spark/spark-jmx-exporter.yml -Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.rmi.port=9997
+  #   ports:
+  #     - "8081:8081"
+  #     - "27076:27076"
+  #   volumes:
+  #     - spark_data:/opt/spark/data
+  #   networks:
+  #     - verdantiq-net
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '1'
+  #         memory: 2G
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "curl -fsS http://localhost:8081 || exit 1"]
+  #     interval: 20s
+  #     timeout: 30s
+  #     retries: 5
 
-  spark-worker2:
-    build:
-      context: .
-      dockerfile: backend/spark/Dockerfile.spark
-    container_name: spark-worker2
-    depends_on:
-      spark-master:
-        condition: service_healthy
-    environment:
-      - SPARK_MODE=worker
-      - SPARK_MASTER_URL=spark://spark-master:7077
-      - SPARK_WORKER_MEMORY=2000M
-      - SPARK_WORKER_CORES=2
-      - SPARK_LOAD_SPARK_ICEBERG=true
-      - SPARK_CONF_DIR=/opt/spark/conf
-      - HADOOP_USER_NAME=root
-      - HADOOP_PROXY_USER=root
-      - HADOOP_SECURITY_AUTHENTICATION=simple
-    ports:
-      - "8082:8081"
-    volumes:
-      - spark_data:/opt/spark/data
-    networks:
-      - verdantiq-net
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 2G
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8081 || exit 1"]
-      interval: 20s
-      timeout: 30s
-      retries: 5
+  # spark-worker2:
+  #   build:
+  #     context: .
+  #     dockerfile: backend/spark/Dockerfile.spark
+  #   container_name: spark-worker2
+  #   depends_on:
+  #     spark-master:
+  #       condition: service_healthy
+  #   environment:
+  #     - SPARK_MODE=worker
+  #     - SPARK_MASTER_URL=spark://spark-master:7077
+  #     - SPARK_WORKER_MEMORY=2000M
+  #     - SPARK_WORKER_CORES=2
+  #     - SPARK_LOAD_SPARK_ICEBERG=true
+  #     - SPARK_CONF_DIR=/opt/spark/conf
+  #     - HADOOP_USER_NAME=root
+  #     - HADOOP_PROXY_USER=root
+  #     - HADOOP_SECURITY_AUTHENTICATION=simple
+      # - SPARK_DAEMON_JAVA_OPTS=-javaagent:/opt/spark/jmx_prometheus_javaagent.jar=27077:/opt/spark/spark-jmx-exporter.yml -Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.rmi.port=9997
+  #   ports:
+  #     - "8081:8081"
+  #     - "27077:27077"
+  #   volumes:
+  #     - spark_data:/opt/spark/data
+  #   networks:
+  #     - verdantiq-net
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '1'
+  #         memory: 2G
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "curl -fsS http://localhost:8081 || exit 1"]
+  #     interval: 20s
+  #     timeout: 30s
+  #     retries: 5
 
   spark-worker3:
     build:
@@ -416,8 +450,10 @@ services:
       - HADOOP_USER_NAME=root
       - HADOOP_PROXY_USER=root
       - HADOOP_SECURITY_AUTHENTICATION=simple
+      # - SPARK_DAEMON_JAVA_OPTS=-javaagent:/opt/spark/jmx_prometheus_javaagent.jar=27078:/opt/spark/spark-jmx-exporter.yml -Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.rmi.port=9997
     ports:
       - "8083:8081"
+      # - "27078:27078"  
     volumes:
       - spark_data:/opt/spark/data
     networks:
