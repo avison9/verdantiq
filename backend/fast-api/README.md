@@ -11,7 +11,7 @@ To get the application working locally:
    - Login to PostgreSQL container (e.g., via `docker exec -it postgres bash `)
    - Create a database:
      ```bash
-     createdb agric_tech_db
+     createdb verdantiq_test_db
      ```
 2. **Configure Environment Variables**:
    - Save `.env` to the project directory.
@@ -120,7 +120,7 @@ To get the application working locally:
      ```
 
 6. **Verify Database**:
-   - Connect to PostgreSQL (`psql -d veerdantiq_test_db`) and check:
+   - Connect to PostgreSQL (`psql -d verdantiq_test_db`) and check:
      ```sql
      \dt
      SELECT * FROM tenants;
