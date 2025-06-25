@@ -8,4 +8,4 @@ __pycache__/
 .vscode/
 .git/
 .pytest*
-v_env/
+*_env/
