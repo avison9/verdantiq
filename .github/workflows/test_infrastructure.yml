@@ -1,4 +1,74 @@
-name: Test Infrastructure Services
+# name: Test Infrastructure Services
+
+# on:
+#   pull_request:
+#     branches: [ master ]
+
+# jobs:
+#   test-infrastructure:
+#     runs-on: ubuntu-latest
+#     services:
+#       docker:
+#         image: docker:dind
+#         options: --privileged
+        
+#     steps:
+#     - name: Checkout repository
+#       uses: actions/checkout@v3
+
+#     - name: Set up Docker Buildx
+#       uses: docker/setup-buildx-action@v2
+
+#     - name: Download jar files
+#       run: bash util/spark-lib-downloader.sh
+#       shell: bash
+#       continue-on-error: false
+
+#     - name: Build and start containers
+#       run: |
+#         docker compose up -d --build
+             
+#     - name: Run infrastructure tests
+#       run: |
+#         docker compose run --rm test-infra bash -c "python -m pytest tests/test_infrastructure.py"
+        
+#     - name: Clean up
+#       if: always()
+#       run: docker compose down -v
+
+
+# name: Test API Services
+# on:
+#   pull_request:
+#     branches: [ master ]
+
+# jobs:
+#   test-infrastructure:
+#     runs-on: ubuntu-latest
+
+#     steps:
+#     - name: Checkout repository
+#       uses: actions/checkout@v3
+
+#     - name: Set up Docker Buildx
+#       uses: docker/setup-buildx-action@v2
+
+#     - name: Build and start containers
+#       working-directory: backend/fast-api
+#       run: |
+#         docker compose up -d --build
+             
+#     - name: Run fast-api tests
+#       working-directory: backend/fast-api
+#       run: |
+#         docker compose run --rm test bash -c "python -m pytest tests/test_services.py"
+        
+#     - name: Clean up
+#       if: always()
+#       working-directory: backend/fast-api
+#       run: docker compose down -v
+
+name: Test API Services
 
 on:
   pull_request:
@@ -7,11 +77,22 @@ on:
 jobs:
   test-infrastructure:
     runs-on: ubuntu-latest
+
     services:
-      docker:
-        image: docker:dind
-        options: --privileged
-        
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
     steps:
     - name: Checkout repository
       uses: actions/checkout@v3
@@ -19,20 +100,31 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v2
 
-    - name: Download jar files
-      run: bash util/spark-lib-downloader.sh
-      shell: bash
-      continue-on-error: false
+    - name: Create .env file from GitHub secrets
+      working-directory: backend/fast-api
+      run: |
+        echo "POSTGRES_USER=${{ secrets.POSTGRES_USER }}" >> .env
+        echo "POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}" >> .env
+        echo "POSTGRES_DB=${{ secrets.POSTGRES_DB }}" >> .env
 
     - name: Build and start containers
+      working-directory: backend/fast-api
       run: |
         docker compose up -d --build
-             
-    - name: Run infrastructure tests
+
+    - name: Wait for PostgreSQL to be ready
       run: |
-        docker compose run --rm test-infra bash -c "python -m pytest tests/test_infrastructure.py"
-        
+        until docker exec postgres pg_isready; do
+          echo "Waiting for Postgres..."
+          sleep 2
+        done
+
+    - name: Run fast-api tests
+      working-directory: backend/fast-api
+      run: |
+        docker compose run --rm test bash -c "pytest -v tests/test_services.py"
+
     - name: Clean up
       if: always()
+      working-directory: backend/fast-api
       run: docker compose down -v
-
