@@ -122,7 +122,7 @@ jobs:
     - name: Run fast-api tests
       working-directory: backend/fast-api
       run: |
-        docker compose run --rm test bash -c "pytest -v tests/test_services.py"
+        docker compose run --rm test bash -c "pytest -v -n 0 tests/test_services.py"
 
     - name: Clean up
       if: always()
