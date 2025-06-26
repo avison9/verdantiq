@@ -8,7 +8,7 @@ To get the application working locally:
 
 1. **Run the docker compose file for the services to be up**:
    - Start up the docker service using the docker compose file (e.g., via `docker compose up --build `)
-   - Login to PostgreSQL container (e.g., via `docker exec -it postgres bash `)
+   - Login to PostgreSQL container (e.g., via `docker exec -it postgres psql -U <username> -d <database> `)
    - Create a database:
      ```bash
      createdb verdantiq_test_db
