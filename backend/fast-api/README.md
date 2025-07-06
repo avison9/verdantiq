@@ -129,3 +129,6 @@ To get the application working locally:
      SELECT * FROM user_profiles;
      SELECT * FROM user_activity_logs;
      ```
+**Verify Endpoints in Browser**:
+  You can verify the endpoint in a browser or Postman.
+    ![Endpoint in Browser](images/browser.png)
