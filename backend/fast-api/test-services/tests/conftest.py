@@ -112,7 +112,7 @@
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.pool import NullPool
@@ -121,6 +121,7 @@ from main import app, get_db
 from datetime import datetime, timedelta
 from configs import SECRET_KEY, ALGORITHM
 from jose import jwt
+import time
 
 # Database configuration
 POSTGRES_USER = "postgres"
@@ -138,11 +139,27 @@ engine = create_engine(TEST_DATABASE_URL, poolclass=NullPool)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Set up DB schema once for all tests
+# @pytest.fixture(scope="session", autouse=True)
+# def prepare_database():
+#     Base.metadata.create_all(bind=engine)
+#     yield
+#     Base.metadata.drop_all(bind=engine)
+
 @pytest.fixture(scope="session", autouse=True)
 def prepare_database():
+    # Create tables before any tests run
     Base.metadata.create_all(bind=engine)
+
     yield
-    Base.metadata.drop_all(bind=engine)
+
+    # Ensure all transactions are finished, small delay to reduce deadlock risk
+    time.sleep(0.5)
+
+    with engine.connect() as conn:
+        # Commit/rollback anything open on this connection
+        conn.execute(text("COMMIT"))
+        # Drop all tables cleanly using fresh connection
+        Base.metadata.drop_all(bind=conn)
 
 # Dependency override
 def override_get_db():
