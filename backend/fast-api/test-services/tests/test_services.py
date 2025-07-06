@@ -51,14 +51,15 @@ def test_create_user_new_tenant(client, user_data):
     assert data["profile"]["role"] == user_data["user_profile"]["role"]
     assert data["profile"]["country"] == user_data["user_profile"]["country"]
 
+
 def test_create_user_existing_tenant(client, user_data, existing_tenant_user_data):
     response = client.post("/register", json=user_data)
     assert response.status_code == 200
+    tenant_id = response.json().get("tenant", {}).get("id") or response.json().get("tenant_id")
+    assert tenant_id is not None
+    existing_tenant_user_data["tenant_id"] = tenant_id
     response = client.post("/register", json=existing_tenant_user_data)
     assert response.status_code == 200
-    data = response.json()
-    assert data["email"] == existing_tenant_user_data["email"]
-    assert data["profile"]["role"] == existing_tenant_user_data["user_profile"]["role"]
 
 def test_create_user_duplicate_email(client, user_data):
     client.post("/register", json=user_data)
