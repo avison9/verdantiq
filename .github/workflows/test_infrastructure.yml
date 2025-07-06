@@ -1,57 +1,35 @@
-# ---------------------------------------------------
-# Name of the workflow
-# ---------------------------------------------------
 name: Test API Services
 
-# ---------------------------------------------------
-# Trigger the workflow on pull requests to the master branch
-# ---------------------------------------------------
 on:
   pull_request:
     branches: [ master ]
 
-# ---------------------------------------------------
-# Define the test job
-# ---------------------------------------------------
 jobs:
   test-infrastructure:
-    runs-on: ubuntu-latest  # Run the job on the latest Ubuntu runner
+    runs-on: ubuntu-latest
 
-    # ---------------------------------------------------
-    # Define PostgreSQL service for use in testing
-    # ---------------------------------------------------
     services:
       postgres:
-        image: postgres:15  # Use PostgreSQL version 15
+        image: postgres:15
         env:
-          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}        # Set DB user from GitHub secrets
-          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}# Set DB password from GitHub secrets
-          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}            # Set DB name from GitHub secrets
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
         ports:
-          - 5432:5432  # Map PostgreSQL port
+          - 5432:5432
         options: >-
-          --health-cmd="pg_isready"         # Check DB readiness
-          --health-interval=10s             # Check every 10 seconds
-          --health-timeout=5s               # Timeout after 5 seconds
-          --health-retries=5                # Retry up to 5 times
+          --health-cmd="pg_isready"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
 
     steps:
-    # ---------------------------------------------------
-    # Step 1: Checkout the repository code
-    # ---------------------------------------------------
     - name: Checkout repository
       uses: actions/checkout@v3
 
-    # ---------------------------------------------------
-    # Step 2: Set up Docker Buildx (for building images)
-    # ---------------------------------------------------
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v2
 
-    # ---------------------------------------------------
-    # Step 3: Create a .env file for environment variables
-    # This will be used by Docker and the application
-    # ---------------------------------------------------
     - name: Create .env file from GitHub secrets
       working-directory: backend/fast-api
       run: |
@@ -59,18 +37,11 @@ jobs:
         echo "POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}" >> .env
         echo "POSTGRES_DB=${{ secrets.POSTGRES_DB }}" >> .env
 
-    # ---------------------------------------------------
-    # Step 4: Build and start containers in detached mode
-    # using Docker Compose configuration
-    # ---------------------------------------------------
     - name: Build and start containers
       working-directory: backend/fast-api
       run: |
         docker compose up -d --build
 
-    # ---------------------------------------------------
-    # Step 5: Wait until PostgreSQL inside the container is ready
-    # ---------------------------------------------------
     - name: Wait for PostgreSQL to be ready
       run: |
         until docker exec postgres pg_isready; do
@@ -78,19 +49,11 @@ jobs:
           sleep 2
         done
 
-    # ---------------------------------------------------
-    # Step 6: Run API service tests using pytest
-    # Targeting specific test file for services
-    # ---------------------------------------------------
     - name: Run fast-api tests
       working-directory: backend/fast-api
       run: |
         docker compose run --rm test bash -c "pytest -v -n 0 tests/test_services.py"
 
-    # ---------------------------------------------------
-    # Step 7: Tear down containers and volumes
-    # Ensures clean environment even if the test fails
-    # ---------------------------------------------------
     - name: Clean up
       if: always()
       working-directory: backend/fast-api
