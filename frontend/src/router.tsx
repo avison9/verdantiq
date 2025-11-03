@@ -18,6 +18,7 @@ const WorkerRegistrationForm = lazy(
   () => import("./pages/authentication/WorkerRegistrationForm")
 );
 const Dashboard = lazy(() => import("./pages/dashboard/Dashboard"));
+const UpdateProfilePage = lazy(() => import("./pages/dashboard/UpdateProfile"));
 
 export const router = createBrowserRouter([
   {
@@ -38,6 +39,7 @@ export const router = createBrowserRouter([
       {
         path: "",
         element: <Dashboard />,
+
         children: [
           // {
           //   path: "",
@@ -46,6 +48,7 @@ export const router = createBrowserRouter([
           // },
         ],
       },
+      { path: "update-profile", element: <UpdateProfilePage /> },
     ],
   },
   {

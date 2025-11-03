@@ -31,6 +31,10 @@ import {
   Edit,
   Eye,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { RootState } from "../../redux/store";
+import { useSelector } from "react-redux";
+import { useGetProfileQuery } from "../../redux/apislices/profileApiSlice";
 
 interface User {
   id: string;
@@ -72,8 +76,15 @@ const user: User = {
 };
 
 const Dashboard = () => {
+  const navigate = useNavigate();
+  const { userInfo } = useSelector((state: RootState) => state.auth);
+  const { data, isLoading: loadingProfileData } = useGetProfileQuery(
+    userInfo.id || ""
+  );
   const [activeTab, setActiveTab] = useState("overview");
   const isFarmOwner = user.tenant.name !== undefined;
+
+  console.log("userprofile data ==>> ", data);
 
   // Mock data for demonstration
   const teamMembers = [
@@ -310,7 +321,11 @@ const Dashboard = () => {
                       Invite Team Member
                     </Button>
                   )}
-                  <Button className="w-full justify-start" variant="outline">
+                  <Button
+                    onClick={() => navigate("/update-profile")}
+                    className="w-full justify-start"
+                    variant="outline"
+                  >
                     <Edit className="mr-2 h-4 w-4" />
                     Update Profile
                   </Button>
