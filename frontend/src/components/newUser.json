@@ -1,0 +1,340 @@
+[
+  {
+    "_id": {
+      "$oid": "64dcda0321fc1e6fba4a9bcd"
+    },
+    "_uuid": "1c8c2fb7-66bc-43d1-97f4-93a52da32cc0",
+    "firstName": "Tunde",
+    "lastName": "Ajayi",
+    "age": "40",
+    "sex": "male",
+    "maritalStatus": "married",
+    "educationStatus": "tertiary",
+    "householdSize": "5",
+    "nationalIdentificationNumber": "35942997284",
+    "profileImage": "http://api.ona.io/api/v1/files/33601569?filename=seedtracker/attachments/732885_OGSTEP5/1685365174738.jpg",
+    "mobileNumber": "7031195688",
+    "alternateMobileNumber": "n/a",
+    "email": "t.ajayi@cgiar.org",
+    "houseNumber": "56",
+    "streetName": "Araromi Street,",
+    "city": "Ibiade",
+    "lga": "Ogun_Waterside",
+    "nationality": "Nigeria",
+    "stateOfOrigin": "Ogun",
+    "totalAdultInTheFamily": "12",
+    "employedAdultInTheFamily": "2",
+    "memberofCooperativeGroup": "no",
+    "challengesOfUsingMobilePhone": "None",
+    "advantagesOfUsingMobilePhone": "Passing information and communication ",
+    "proficiencyInUsingInternet": "low",
+    "dateOfDataCollection": "29/05/2023",
+    "enumeratorName": "Omokaro_Ameh",
+    "otherEnumerator": "n/a",
+    "canFarmerbeListedOnAgroshop": "n/a",
+    "enumeratorComment": "Responsive",
+    "testUser": {
+      "business_Name": "Other-location",
+      "type_of_commodity": {
+        "farm_tools": "FALSE",
+        "agrochemicals": "FALSE",
+        "fertilizers": "TRUE",
+        "feed": "Private"
+      },
+      "area_of_Operation": {
+        "intrastate": "FALSE",
+        "interstate": "FALSE",
+        "international": "TRUE"
+      },
+      "location": "group_inputdealer/inputdealer_Location",
+      "lga": "group_inputdealer/inputdealer_LGA",
+      "data_collection_location": "group_inputdealer/inputdealer_Data_collection_location",
+      "gps": "group_inputdealer/inputdealer_GPS",
+      "latitude": "group_inputdealer/_inputdealer_GPS_latitude",
+      "longitude": "group_inputdealer/_inputdealer_GPS_longitude",
+      "altitude": "group_inputdealer/_inputdealer_GPS_altitude",
+      "gps_precision": "group_inputdealer/_inputdealer_GPS_precision",
+      "business_Address": "group_inputdealer/inputdealer_Business_Address",
+      "telephone_number": "group_inputdealer/inputdealer_Telephone_number",
+      "email_address": "group_inputdealer/inputdealer_Email_address",
+      "business_category": "group_inputdealer/inputdealer_Business_category",
+      "year_of_Business_establishment": "group_inputdealer/inputdealer_Year_of_Business_establishment"
+    },
+    "__v": 0,
+    "createdAt": {
+      "$date": "2023-08-16T14:15:32.242Z"
+    },
+    "updatedAt": {
+      "$date": "2023-08-16T14:15:32.242Z"
+    }
+  },
+  {
+    "_id": {
+      "$oid": "64dcda0321fc1e6fba4a9bce"
+    },
+    "_uuid": "7ed9e232-2a21-41c0-8b4c-50d58796f69f",
+    "firstName": "Inioluwa",
+    "lastName": "Adewara",
+    "age": "59",
+    "sex": "male",
+    "maritalStatus": "married",
+    "educationStatus": "primary",
+    "householdSize": "6",
+    "nationalIdentificationNumber": "48209939476",
+    "profileImage": "http://api.ona.io/api/v1/files/33601574?filename=seedtracker/attachments/732885_OGSTEP5/1685351049200.jpg",
+    "mobileNumber": "8067579732",
+    "alternateMobileNumber": "n/a",
+    "email": "i.adewara@cgiar.org",
+    "houseNumber": "52",
+    "streetName": "Ishokun",
+    "city": "Ilisan",
+    "lga": "Ikenne",
+    "nationality": "Nigeria",
+    "stateOfOrigin": "Ogun",
+    "totalAdultInTheFamily": "3",
+    "employedAdultInTheFamily": "0",
+    "memberofCooperativeGroup": "yes",
+    "challengesOfUsingMobilePhone": "Poor power supply shortage",
+    "advantagesOfUsingMobilePhone": "Easy to connect with other",
+    "proficiencyInUsingInternet": "low",
+    "dateOfDataCollection": "29/05/2023",
+    "enumeratorName": "Talabi_Olusola",
+    "otherEnumerator": "n/a",
+    "canFarmerbeListedOnAgroshop": "n/a",
+    "enumeratorComment": "No  comments",
+    "testUser": {
+      "business_Name": "Other-location",
+      "type_of_commodity": {
+        "farm_tools": "FALSE",
+        "agrochemicals": "FALSE",
+        "fertilizers": "TRUE",
+        "feed": "Private"
+      },
+      "area_of_Operation": {
+        "intrastate": "FALSE",
+        "interstate": "FALSE",
+        "international": "TRUE"
+      },
+      "location": "group_inputdealer/inputdealer_Location",
+      "lga": "group_inputdealer/inputdealer_LGA",
+      "data_collection_location": "group_inputdealer/inputdealer_Data_collection_location",
+      "gps": "group_inputdealer/inputdealer_GPS",
+      "latitude": "group_inputdealer/_inputdealer_GPS_latitude",
+      "longitude": "group_inputdealer/_inputdealer_GPS_longitude",
+      "altitude": "group_inputdealer/_inputdealer_GPS_altitude",
+      "gps_precision": "group_inputdealer/_inputdealer_GPS_precision",
+      "business_Address": "group_inputdealer/inputdealer_Business_Address",
+      "telephone_number": "group_inputdealer/inputdealer_Telephone_number",
+      "email_address": "group_inputdealer/inputdealer_Email_address",
+      "business_category": "group_inputdealer/inputdealer_Business_category",
+      "year_of_Business_establishment": "group_inputdealer/inputdealer_Year_of_Business_establishment"
+    },
+    "__v": 0,
+    "createdAt": {
+      "$date": "2023-08-16T14:15:32.243Z"
+    },
+    "updatedAt": {
+      "$date": "2023-08-16T14:15:32.243Z"
+    }
+  },
+  {
+    "_id": {
+      "$oid": "64dcda0321fc1e6fba4a9bcf"
+    },
+    "_uuid": "ec362457-f1b1-4ec1-970b-a428339ad18c",
+    "firstName": "Victor",
+    "lastName": "Obafemi",
+    "age": "72",
+    "sex": "male",
+    "maritalStatus": "married",
+    "educationStatus": "secondary",
+    "householdSize": "12",
+    "nationalIdentificationNumber": "57313806523",
+    "profileImage": "http://api.ona.io/api/v1/files/33601584?filename=seedtracker/attachments/732885_OGSTEP5/1685366164080.jpg",
+    "mobileNumber": "8137694446",
+    "alternateMobileNumber": "8054656725",
+    "email": "vd.obafemi@cgiar.org",
+    "houseNumber": "10",
+    "streetName": "Moborode",
+    "city": "Efiree",
+    "lga": "Ogun_Waterside",
+    "nationality": "Nigeria",
+    "stateOfOrigin": "Ogun",
+    "totalAdultInTheFamily": "4",
+    "employedAdultInTheFamily": "4",
+    "memberofCooperativeGroup": "yes",
+    "challengesOfUsingMobilePhone": "Low network",
+    "advantagesOfUsingMobilePhone": "Passing information and communication",
+    "proficiencyInUsingInternet": "low",
+    "dateOfDataCollection": "29/05/2023",
+    "enumeratorName": "Omokaro_Ameh",
+    "otherEnumerator": "n/a",
+    "canFarmerbeListedOnAgroshop": "n/a",
+    "enumeratorComment": "Responsive",
+    "testUser": {
+      "business_Name": "Other-location",
+      "type_of_commodity": {
+        "farm_tools": "FALSE",
+        "agrochemicals": "FALSE",
+        "fertilizers": "TRUE",
+        "feed": "Private"
+      },
+      "area_of_Operation": {
+        "intrastate": "FALSE",
+        "interstate": "FALSE",
+        "international": "TRUE"
+      },
+      "location": "group_inputdealer/inputdealer_Location",
+      "lga": "group_inputdealer/inputdealer_LGA",
+      "data_collection_location": "group_inputdealer/inputdealer_Data_collection_location",
+      "gps": "group_inputdealer/inputdealer_GPS",
+      "latitude": "group_inputdealer/_inputdealer_GPS_latitude",
+      "longitude": "group_inputdealer/_inputdealer_GPS_longitude",
+      "altitude": "group_inputdealer/_inputdealer_GPS_altitude",
+      "gps_precision": "group_inputdealer/_inputdealer_GPS_precision",
+      "business_Address": "group_inputdealer/inputdealer_Business_Address",
+      "telephone_number": "group_inputdealer/inputdealer_Telephone_number",
+      "email_address": "group_inputdealer/inputdealer_Email_address",
+      "business_category": "group_inputdealer/inputdealer_Business_category",
+      "year_of_Business_establishment": "group_inputdealer/inputdealer_Year_of_Business_establishment"
+    },
+    "__v": 0,
+    "createdAt": {
+      "$date": "2023-08-16T14:15:32.244Z"
+    },
+    "updatedAt": {
+      "$date": "2023-08-16T14:15:32.244Z"
+    }
+  },
+  {
+    "_id": {
+      "$oid": "64dcda0321fc1e6fba4a9bd0"
+    },
+    "_uuid": "e7de7624-c2b3-4f1f-8535-166f603057f3",
+    "firstName": "Evans",
+    "lastName": "Samuel",
+    "age": "58",
+    "sex": "male",
+    "maritalStatus": "married",
+    "educationStatus": "secondary",
+    "householdSize": "9",
+    "nationalIdentificationNumber": "62437564166",
+    "profileImage": "http://api.ona.io/api/v1/files/33601592?filename=seedtracker/attachments/732885_OGSTEP5/1685367205583.jpg",
+    "mobileNumber": "8065878195",
+    "alternateMobileNumber": "7053433201",
+    "email": "e.samuel@cgiar.org",
+    "houseNumber": "23",
+    "streetName": "Onaba street",
+    "city": "Efiree",
+    "lga": "Ogun_Waterside",
+    "nationality": "Nigeria",
+    "stateOfOrigin": "Ogun",
+    "totalAdultInTheFamily": "6",
+    "employedAdultInTheFamily": "3",
+    "memberofCooperativeGroup": "yes",
+    "challengesOfUsingMobilePhone": "None",
+    "advantagesOfUsingMobilePhone": "Passing information",
+    "proficiencyInUsingInternet": "low",
+    "dateOfDataCollection": "29/05/2023",
+    "enumeratorName": "Omokaro_Ameh",
+    "otherEnumerator": "n/a",
+    "canFarmerbeListedOnAgroshop": "n/a",
+    "enumeratorComment": "Responsive",
+    "testUser": {
+      "business_Name": "Other-location",
+      "type_of_commodity": {
+        "farm_tools": "FALSE",
+        "agrochemicals": "FALSE",
+        "fertilizers": "TRUE",
+        "feed": "Private"
+      },
+      "area_of_Operation": {
+        "intrastate": "FALSE",
+        "interstate": "FALSE",
+        "international": "TRUE"
+      },
+      "location": "group_inputdealer/inputdealer_Location",
+      "lga": "group_inputdealer/inputdealer_LGA",
+      "data_collection_location": "group_inputdealer/inputdealer_Data_collection_location",
+      "gps": "group_inputdealer/inputdealer_GPS",
+      "latitude": "group_inputdealer/_inputdealer_GPS_latitude",
+      "longitude": "group_inputdealer/_inputdealer_GPS_longitude",
+      "altitude": "group_inputdealer/_inputdealer_GPS_altitude",
+      "gps_precision": "group_inputdealer/_inputdealer_GPS_precision",
+      "business_Address": "group_inputdealer/inputdealer_Business_Address",
+      "telephone_number": "group_inputdealer/inputdealer_Telephone_number",
+      "email_address": "group_inputdealer/inputdealer_Email_address",
+      "business_category": "group_inputdealer/inputdealer_Business_category",
+      "year_of_Business_establishment": "group_inputdealer/inputdealer_Year_of_Business_establishment"
+    },
+    "__v": 0,
+    "createdAt": {
+      "$date": "2023-08-16T14:15:32.244Z"
+    },
+    "updatedAt": {
+      "$date": "2023-08-16T14:15:32.244Z"
+    }
+  },
+  {
+    "_id": {
+      "$oid": "64dcda0321fc1e6fba4a9bd1"
+    },
+    "_uuid": "1eb8206b-24db-467e-bbff-83e8b5fa5cdb",
+    "firstName": "Abbas",
+    "lastName": "Olaiya",
+    "age": "61",
+    "sex": "male",
+    "maritalStatus": "married",
+    "educationStatus": "secondary",
+    "householdSize": "14",
+    "nationalIdentificationNumber": "40940192563",
+    "profileImage": "http://api.ona.io/api/v1/files/33601602?filename=seedtracker/attachments/732885_OGSTEP5/1685368218502.jpg",
+    "mobileNumber": "7062962468",
+    "alternateMobileNumber": "8060006388",
+    "email": "ayotundeolaiya@gmail.com",
+    "houseNumber": "3",
+    "streetName": "Juwon oli street",
+    "city": "Efiree",
+    "lga": "Ogun_Waterside",
+    "nationality": "Nigeria",
+    "stateOfOrigin": "Ogun",
+    "totalAdultInTheFamily": "4",
+    "employedAdultInTheFamily": "4",
+    "memberofCooperativeGroup": "no",
+    "challengesOfUsingMobilePhone": "None",
+    "advantagesOfUsingMobilePhone": "Passing information",
+    "proficiencyInUsingInternet": "low",
+    "dateOfDataCollection": "29/05/2023",
+    "enumeratorName": "Omokaro_Ameh",
+    "otherEnumerator": "n/a",
+    "canFarmerbeListedOnAgroshop": "n/a",
+    "enumeratorComment": "Responded well",
+    "testUser": {
+      "business_Name": "Other-location",
+      "type_of_commodity": {
+        "farm_tools": "FALSE",
+        "agrochemicals": "FALSE",
+        "fertilizers": "TRUE",
+        "feed": "Private"
+      },
+      "area_of_Operation": {
+        "intrastate": "FALSE",
+        "interstate": "FALSE",
+        "international": "TRUE"
+      },
+      "location": "group_inputdealer/inputdealer_Location",
+      "lga": "group_inputdealer/inputdealer_LGA",
+      "data_collection_location": "group_inputdealer/inputdealer_Data_collection_location",
+      "gps": "group_inputdealer/inputdealer_GPS",
+      "latitude": "group_inputdealer/_inputdealer_GPS_latitude",
+      "longitude": "group_inputdealer/_inputdealer_GPS_longitude",
+      "altitude": "group_inputdealer/_inputdealer_GPS_altitude",
+      "gps_precision": "group_inputdealer/_inputdealer_GPS_precision",
+      "business_Address": "group_inputdealer/inputdealer_Business_Address",
+      "telephone_number": "group_inputdealer/inputdealer_Telephone_number",
+      "email_address": "group_inputdealer/inputdealer_Email_address",
+      "business_category": "group_inputdealer/inputdealer_Business_category",
+      "year_of_Business_establishment": "group_inputdealer/inputdealer_Year_of_Business_establishment"
+    }
+  }
+]

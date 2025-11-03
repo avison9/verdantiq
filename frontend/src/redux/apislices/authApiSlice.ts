@@ -1,13 +1,6 @@
+import { APIendPoints } from "../../constants/APIendPoints";
 import { baseApiSlice } from "./baseSpiSlice";
 
-// Define types for the data
-interface UserData {
-  firstName: string;
-  lastName: string;
-  email: string;
-  password: string;
-  referrerCode: string;
-}
 interface LoginResponse {
   status: string;
   message: string;
@@ -54,16 +47,16 @@ interface IResponse {
 
 export const authApiSlice = baseApiSlice.injectEndpoints({
   endpoints: (builder) => ({
-    signup: builder.mutation<any, UserData>({
+    signup: builder.mutation<any, IUser>({
       query: (data) => ({
-        url: `signup`,
+        url: APIendPoints.register,
         method: "POST",
         body: data,
       }),
     }),
     signin: builder.mutation<LoginResponse, SigninData>({
       query: (data) => ({
-        url: `signin`,
+        url: APIendPoints.login,
         method: "POST",
         body: data,
       }),

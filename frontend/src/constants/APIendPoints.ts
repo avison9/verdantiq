@@ -1,8 +1,10 @@
-const BASE_URL = "http://192.168.110.46/1100/api/v1/";
+const BASE_URL = "http://localhost:8000/";
 export const APIendPoints = {
   baseUrl: BASE_URL,
-  login: ``,
-  register: ``,
+  login: `login`,
+  register: `register`,
+  logout: "logout",
+  profile: "users/me/",
   verify: ``,
   forgotpasword: ``,
   resetpassword: ``,

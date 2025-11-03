@@ -1,15 +1,23 @@
 import { createBrowserRouter } from "react-router-dom";
 import App from "./App";
-import LandingPage from "./pages/LandingPage";
-import Login from "./pages/authentication/Login";
-import Register from "./pages/authentication/Register";
-import ForgotPassword from "./pages/authentication/ForgotPassword";
-import Verify from "./pages/authentication/Verify";
-import ResetPassword from "./pages/authentication/ResetPassword";
-import PageNotFound from "./components/PageNotFound";
 
-// const Signup = lazy(() => import("./pages/auth/Signup"));
-// const Signin = lazy(() => import("./pages/auth/Signin"));
+// import ForgotPassword from "./pages/authentication/ForgotPassword";
+// import Verify from "./pages/authentication/Verify";
+// import ResetPassword from "./pages/authentication/ResetPassword";
+import PageNotFound from "./components/PageNotFound";
+// import Login from "./pages/authentication/Login";
+import { lazy } from "react";
+
+const Login = lazy(() => import("./pages/authentication/Login"));
+const PrivateRoute = lazy(() => import("./components/PrivateRoute"));
+const LandingPage = lazy(() => import("./pages/LandingPage"));
+const FarmerRegistrationForm = lazy(
+  () => import("./pages/authentication/FarmerRegistrationForm")
+);
+const WorkerRegistrationForm = lazy(
+  () => import("./pages/authentication/WorkerRegistrationForm")
+);
+const Dashboard = lazy(() => import("./pages/dashboard/Dashboard"));
 
 export const router = createBrowserRouter([
   {
@@ -23,53 +31,48 @@ export const router = createBrowserRouter([
       },
     ],
   },
-  // {
-  //   path: "",
-  //   element: <PrivateRoute />,
-  //   children: [
-  //     {
-  //       path: "",
-  //       element: <Dashboard />,
-  //       children: [
-
-  //         {
-  //           path: "",
-  //           element: <AdminRoute />,
-  //           children: [
-
-  //           ],
-  //         },
-  //       ],
-  //     },
-  //   ],
-  // },
   {
-    path: "/login",
+    path: "/dashboard",
+    element: <PrivateRoute />,
     children: [
       {
-        path: "/login",
-        index: true,
-        element: <Login />,
+        path: "",
+        element: <Dashboard />,
+        children: [
+          // {
+          //   path: "",
+          //   element: <AdminRoute />,
+          //   children: [],
+          // },
+        ],
       },
     ],
   },
+  {
+    path: "/login",
+    element: <Login />,
+  },
 
   {
-    path: "/register",
-    element: <Register />,
+    path: "/register-worker",
+    element: <WorkerRegistrationForm />,
   },
   {
-    path: "/forgot-password",
-    element: <ForgotPassword />,
+    path: "/register-farmer",
+    element: <FarmerRegistrationForm />,
   },
-  {
-    path: "/verify",
-    element: <Verify />,
-  },
-  {
-    path: "/reset-password",
-    element: <ResetPassword />,
-  },
+  // {
+  //   path: "/forgot-password",
+  //   element: <ForgotPassword />,
+  // },
+  // {
+  //   path: "/verify",
+  //   element: <Verify />,
+  // },
+  // {
+  //   path: "/reset-password",
+  //   element: <ResetPassword />,
+  // },
 
   {
     path: "*",
