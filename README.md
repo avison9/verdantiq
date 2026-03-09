@@ -29,7 +29,7 @@ Sensor Service ──(httpx)──► Tenant Service  (internal billing mutation
 All services   ──(shared JWT)──► PostgreSQL (single shared DB, isolated by tenant_id)
 ```
 
-Data pipeline runs independently and connects to the same network:
+Data Services runs independently and connects to the same network:
 
 ```
 IoT Devices → MQTT → Kafka → Spark Streaming → Iceberg (MinIO) → Trino → Frontend
