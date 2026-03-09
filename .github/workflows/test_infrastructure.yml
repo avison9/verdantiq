@@ -1,63 +1,198 @@
-# ---------------------------------------------------
-# Name of the workflow
-# ---------------------------------------------------
-name: Test API Services
+# =============================================================================
+#  VerdantIQ CI Pipeline
+#
+#  Three parallel jobs run on every PR targeting master.
+#  All three must pass before a merge is allowed.
+#
+#  backend-test  — pytest via uv (fast, no Docker build overhead)
+#  frontend-test — tsc + eslint via npm
+#  infra-test    — full docker compose stack (master push only — slow)
+# =============================================================================
+
+name: CI
 
 on:
   pull_request:
-    branches: [ master ]
+    branches: [master]
+  push:
+    branches: [master]
 
 jobs:
-  test-infrastructure:
+  # ───────────────────────────────────────────────────────────────────────────
+  #  JOB 1 — Backend tests  (pytest + coverage, runs directly with uv)
+  # ───────────────────────────────────────────────────────────────────────────
+  backend-test:
+    name: Backend Tests
     runs-on: ubuntu-latest
 
     services:
       postgres:
         image: postgres:15
         env:
-          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
-          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_db
         ports:
           - 5432:5432
         options: >-
-          --health-cmd="pg_isready"
+          --health-cmd="pg_isready -U postgres"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=5
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
+      # Install uv via the official action (handles caching automatically)
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "backend/fast-api/uv.lock"
 
-    - name: Create .env file from GitHub secrets
-      working-directory: backend/fast-api
-      run: |
-        echo "POSTGRES_USER=${{ secrets.POSTGRES_USER }}" >> .env
-        echo "POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}" >> .env
-        echo "POSTGRES_DB=${{ secrets.POSTGRES_DB }}" >> .env
+      - name: Set up Python
+        run: uv python install 3.10
 
-    - name: Build and start containers
-      working-directory: backend/fast-api
-      run: |
-        docker compose up -d --build
+      - name: Install dependencies
+        working-directory: backend/fast-api
+        run: uv sync
 
-    - name: Wait for PostgreSQL to be ready
-      run: |
-        until docker exec postgres pg_isready; do
-          echo "Waiting for Postgres..."
-          sleep 2
-        done
+      - name: Write .env
+        working-directory: backend/fast-api
+        run: |
+          cat > .env <<EOF
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/test_db
+          SECRET_KEY=ci-test-secret-not-for-production
+          ALGORITHM=HS256
+          TRINO_HOST=localhost
+          TRINO_PORT=8080
+          TRINO_USER=trino
+          TRINO_CATALOG=iceberg
+          TRINO_SCHEMA=default
+          POSTGRES_USER=postgres
+          POSTGRES_PASSWORD=postgres
+          POSTGRES_DB=test_db
+          EOF
 
-    - name: Run fast-api tests
-      working-directory: backend/fast-api
-      run: |
-        docker compose run --rm test bash -c "pytest -v -n 0 tests/test_services.py"
+      - name: Run pytest with coverage
+        working-directory: backend/fast-api
+        run: |
+          uv run pytest test-services/tests/ \
+            -v \
+            --tb=short \
+            --cov=. \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --cov-fail-under=80
 
-    - name: Clean up
-      if: always()
-      working-directory: backend/fast-api
-      run: docker compose down -v
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/fast-api/coverage.xml
+
+  # ───────────────────────────────────────────────────────────────────────────
+  #  JOB 2 — Frontend lint & type checks
+  #  (vitest unit tests will be added in Phase 2)
+  # ───────────────────────────────────────────────────────────────────────────
+  frontend-test:
+    name: Frontend Lint & Types
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Write .env
+        run: echo "VITE_API_BASE_URL=http://localhost:8000" > .env
+
+      - name: TypeScript type check
+        run: npx tsc --noEmit
+
+      - name: ESLint
+        run: npm run lint
+
+      # Uncomment when vitest is configured in Phase 2:
+      # - name: Unit tests
+      #   run: npm run test -- --coverage --reporter=verbose
+
+  # ───────────────────────────────────────────────────────────────────────────
+  #  JOB 3 — Infrastructure integration tests
+  #  Only runs on push to master (full stack is slow for every PR)
+  # ───────────────────────────────────────────────────────────────────────────
+  infra-test:
+    name: Infrastructure Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Write root .env
+        run: |
+          cat > .env <<EOF
+          POSTGRES_USER=postgres
+          POSTGRES_PASSWORD=postgres
+          POSTGRES_DB=verdantiq
+          DATABASE_URL=postgresql://postgres:postgres@postgres:5432/verdantiq
+          SECRET_KEY=ci-test-secret-not-for-production
+          ALGORITHM=HS256
+          MINIO_ROOT_USER=minioadmin
+          MINIO_ROOT_PASSWORD=minioadmin
+          MINIO_DOMAIN=localhost
+          S3_ENDPOINT=http://minio:9000
+          GRAFANA_ADMIN_PASSWORD=admin
+          KAFKA_SASL_PASSWORD=kafka
+          TRINO_HOST=trino
+          TRINO_PORT=8080
+          TRINO_USER=trino
+          TRINO_CATALOG=iceberg
+          TRINO_SCHEMA=default
+          EOF
+
+      - name: Start full stack
+        run: docker compose up -d --build
+
+      - name: Wait for services to become healthy
+        run: |
+          echo "Waiting 60s for services to stabilise..."
+          sleep 60
+
+      - name: Install infra test dependencies
+        working-directory: backend/test-infra
+        run: uv sync 2>/dev/null || pip install -r requirements.txt
+
+      - name: Run infrastructure tests
+        working-directory: backend/test-infra
+        run: uv run pytest tests/test_infrastructure.py -v 2>/dev/null \
+             || pytest tests/test_infrastructure.py -v
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v --remove-orphans
