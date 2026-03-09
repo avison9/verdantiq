@@ -9,3 +9,4 @@ __pycache__/
 .git/
 .pytest*
 *_env/
+sprint_plan.txt
