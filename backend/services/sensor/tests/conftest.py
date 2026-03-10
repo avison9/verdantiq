@@ -2,10 +2,11 @@ import os
 import pytest
 from unittest.mock import AsyncMock
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import NullPool
 
+# All services share ONE production database — CI mirrors this with test_db
 os.environ.setdefault("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/test_db")
 os.environ.setdefault("SECRET_KEY", "test-secret-for-ci-only")
 os.environ.setdefault("ALGORITHM", "HS256")
@@ -26,6 +27,8 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 
 @pytest.fixture(scope="session", autouse=True)
 def prepare_database():
+    # Creates sensor-owned tables (sensors). Auth-owned tables (tenants, users,
+    # sessions) already exist from auth tests; checkfirst=True skips them safely.
     Base.metadata.create_all(bind=engine)
     yield
 
@@ -34,8 +37,12 @@ def prepare_database():
 def clean_tables():
     yield
     with engine.begin() as conn:
+        # Delete sensor-owned rows first (FK order within sensor's schema)
         for table in reversed(Base.metadata.sorted_tables):
             conn.execute(table.delete())
+        # tenants is auth-owned but sensor tests insert rows there to satisfy
+        # the users.tenant_id FK that auth's migration placed on the shared schema.
+        conn.execute(text("DELETE FROM tenants"))
 
 
 @pytest.fixture(autouse=True)
@@ -64,11 +71,28 @@ def db_session():
     session.close()
 
 
+def _insert_tenant(db_session, name: str) -> int:
+    """Insert a tenant row to satisfy the users.tenant_id FK (auth owns this table)."""
+    db_session.execute(
+        text(
+            "INSERT INTO tenants (tenant_name, status, created_at) "
+            "VALUES (:name, 'active', NOW())"
+        ),
+        {"name": name},
+    )
+    db_session.flush()
+    row = db_session.execute(
+        text("SELECT tenant_id FROM tenants WHERE tenant_name = :name"), {"name": name}
+    ).first()
+    return row[0]
+
+
 @pytest.fixture
 def mock_user(db_session):
-    """Create a user in the shared DB (sensor service reads this table)."""
+    """Create a tenant + user in the shared DB to satisfy auth's FK constraint."""
+    tenant_id = _insert_tenant(db_session, "SensorTenant1")
     user = models.User(
-        tenant_id=1,
+        tenant_id=tenant_id,
         email="test@example.com",
         password_hash="hashed",
         status="active",
@@ -81,9 +105,10 @@ def mock_user(db_session):
 
 @pytest.fixture
 def other_user(db_session):
-    """A second user belonging to a different tenant (for unauthorized tests)."""
+    """A second user on a different tenant (for unauthorized-access tests)."""
+    tenant_id = _insert_tenant(db_session, "SensorTenant2")
     user = models.User(
-        tenant_id=2,
+        tenant_id=tenant_id,
         email="other@example.com",
         password_hash="hashed",
         status="active",
