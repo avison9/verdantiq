@@ -8,7 +8,7 @@ from sqlalchemy.pool import NullPool
 
 # All services share ONE production database — CI mirrors this with test_db
 os.environ.setdefault("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/test_db")
-os.environ.setdefault("SECRET_KEY", "test-secret-for-ci-only")
+os.environ.setdefault("SECRET_KEY", "test-secret-for-ci-only-min-32-bytes!")
 os.environ.setdefault("ALGORITHM", "HS256")
 os.environ.setdefault("TENANT_SERVICE_URL", "http://localhost:8002")
 os.environ.setdefault("TRINO_HOST", "localhost")

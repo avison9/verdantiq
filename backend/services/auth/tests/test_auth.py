@@ -64,10 +64,9 @@ def test_login_wrong_password(client, user_data):
 
 def test_get_me(client, user_data, login_data):
     client.post("/register", json=user_data)
-    login_response = client.post("/login", json=login_data)
-    token = login_response.cookies.get("access_token")
+    client.post("/login", json=login_data)  # sets access_token cookie on client jar
 
-    response = client.get("/users/me", cookies={"access_token": token})
+    response = client.get("/users/me")
     assert response.status_code == 200
     data = response.json()
     assert data["email"] == user_data["email"]
@@ -81,30 +80,27 @@ def test_get_me_no_token(client):
 
 def test_update_me(client, user_data, login_data):
     client.post("/register", json=user_data)
-    login_response = client.post("/login", json=login_data)
-    token = login_response.cookies.get("access_token")
+    client.post("/login", json=login_data)  # sets access_token cookie on client jar
 
     update = {
         "first_name": "Jane",
         "user_profile": {"role": "admin", "position": "lead agronomist"},
     }
-    response = client.put("/users/me", json=update, cookies={"access_token": token})
+    response = client.put("/users/me", json=update)
     assert response.status_code == 200
     assert response.json()["first_name"] == "Jane"
 
 
 def test_logout(client, user_data, login_data):
     client.post("/register", json=user_data)
-    login_response = client.post("/login", json=login_data)
-    token = login_response.cookies.get("access_token")
-    cookies = {"access_token": token}
+    client.post("/login", json=login_data)  # sets access_token cookie on client jar
 
-    response = client.post("/logout", cookies=cookies)
+    response = client.post("/logout")
     assert response.status_code == 200
     assert response.json()["message"] == "Logged out successfully"
 
-    # Token should be invalidated after logout
-    response = client.get("/users/me", cookies=cookies)
+    # Token should be invalidated after logout (server-side session marked logged_out)
+    response = client.get("/users/me")
     assert response.status_code == 401
 
 

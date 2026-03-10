@@ -10,3 +10,4 @@ __pycache__/
 .pytest*
 *_env/
 sprint_plan.txt
+data-model.md

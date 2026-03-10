@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, status, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import models
 import schemas
 import crud
@@ -38,9 +38,9 @@ async def get_current_user(request: Request, db: Session = Depends(get_db)):
         models.Session.user_id == user.user_id,
         models.Session.status == models.SessionStatus.active,
     ).first()
-    if not session or session.expires_at < datetime.utcnow():
+    if not session or session.expires_at < datetime.now(timezone.utc).replace(tzinfo=None):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired")
-    session.last_active = datetime.utcnow()
+    session.last_active = datetime.now(timezone.utc).replace(tzinfo=None)
     db.commit()
     return user
 

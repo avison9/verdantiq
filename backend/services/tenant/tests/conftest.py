@@ -1,13 +1,13 @@
 import os
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import NullPool
 
 os.environ.setdefault("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/test_db")
-os.environ.setdefault("SECRET_KEY", "test-secret-for-ci-only")
+os.environ.setdefault("SECRET_KEY", "test-secret-for-ci-only-min-32-bytes!")
 os.environ.setdefault("ALGORITHM", "HS256")
 
 TEST_DATABASE_URL = os.environ["DATABASE_URL"]
@@ -88,5 +88,5 @@ def billing_data(mock_user):
         "tenant_id": mock_user.tenant_id,
         "frequency": "monthly",
         "payment_method": "credit_card",
-        "due_date": (datetime.utcnow() + timedelta(days=30)).isoformat(),
+        "due_date": (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=30)).isoformat(),
     }
