@@ -15,7 +15,7 @@ def create_sensor(db: Session, sensor: schemas.SensorCreate, user_id: int) -> mo
         sensor_name=sensor.sensor_name,
         sensor_type=sensor.sensor_type,
         location=sensor.location,
-        metadata=sensor.metadata,
+        sensor_metadata=sensor.sensor_metadata,
         mqtt_token=mqtt_token,
     )
     db.add(db_sensor)

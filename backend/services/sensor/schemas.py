@@ -9,7 +9,7 @@ class SensorCreate(BaseModel):
     sensor_name: str
     sensor_type: str
     location: Optional[str] = None
-    metadata: Optional[dict] = None
+    sensor_metadata: Optional[dict] = None
 
 
 class SensorResponse(BaseModel):
@@ -19,7 +19,7 @@ class SensorResponse(BaseModel):
     sensor_name: str
     sensor_type: str
     location: Optional[str] = None
-    metadata: Optional[dict] = None
+    sensor_metadata: Optional[dict] = None
     message_count: int
     status: SensorStatus
     created_at: datetime

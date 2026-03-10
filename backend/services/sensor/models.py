@@ -25,7 +25,7 @@ class Sensor(Base):
     sensor_name = Column(String(100), nullable=False)
     sensor_type = Column(String(50), nullable=False)
     location = Column(String(255))
-    metadata = Column(JSON, nullable=True)
+    sensor_metadata = Column(JSON, nullable=True)
     mqtt_token = Column(String(36), nullable=False, unique=True)
     message_count = Column(Integer, default=0, nullable=False)
     status = Column(Enum(SensorStatus), nullable=False, default=SensorStatus.active)
