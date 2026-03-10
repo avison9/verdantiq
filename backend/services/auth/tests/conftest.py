@@ -7,7 +7,7 @@ from sqlalchemy.pool import NullPool
 
 # Set env vars BEFORE importing service code (Settings() reads them at module init time)
 os.environ.setdefault("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/test_db")
-os.environ.setdefault("SECRET_KEY", "test-secret-for-ci-only")
+os.environ.setdefault("SECRET_KEY", "test-secret-for-ci-only-min-32-bytes!")
 os.environ.setdefault("ALGORITHM", "HS256")
 
 TEST_DATABASE_URL = os.environ["DATABASE_URL"]

@@ -3,7 +3,7 @@ from pwdlib.hashers.bcrypt import BcryptHasher
 import jwt as pyjwt
 from jwt.exceptions import InvalidTokenError
 from fastapi import HTTPException, status, Request
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from configs import SECRET_KEY, ALGORITHM
 from sqlalchemy.orm import Session
 from models import Session as DBSession, SessionStatus
@@ -26,7 +26,7 @@ def get_password_hash(password: str) -> str:
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=30))
+    expire = datetime.now(timezone.utc).replace(tzinfo=None) + (expires_delta or timedelta(minutes=30))
     to_encode.update({"exp": expire})
     return pyjwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -57,7 +57,7 @@ def create_session(
         user_id=user_id,
         tenant_id=tenant_id,
         token=token,
-        expires_at=datetime.utcnow() + expires_delta,
+        expires_at=datetime.now(timezone.utc).replace(tzinfo=None) + expires_delta,
         device_info={
             "user_agent": request.headers.get("User-Agent", "unknown"),
             "device_type": request.headers.get("Sec-CH-UA-Platform", "unknown"),
@@ -79,5 +79,5 @@ def expire_session(db: Session, session_id: int, user_id: int) -> None:
     )
     if db_session:
         db_session.status = SessionStatus.logged_out
-        db_session.last_active = datetime.utcnow()
+        db_session.last_active = datetime.now(timezone.utc).replace(tzinfo=None)
         db.commit()

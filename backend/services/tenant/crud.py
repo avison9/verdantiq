@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
 import models
 import schemas
-from datetime import datetime
+from datetime import datetime, timezone
 from dateutil.relativedelta import relativedelta
 
 
@@ -43,7 +43,7 @@ def update_billing_on_payment(db: Session, billing: models.Billing):
     billing.message_count = 0
     billing.sensor_count = 0
     billing.amount_due = 0.0
-    billing.last_payment_date = datetime.utcnow()
+    billing.last_payment_date = datetime.now(timezone.utc).replace(tzinfo=None)
     billing.due_date = calculate_next_due_date(billing.frequency, billing.last_payment_date)
     billing.status = models.BillingStatus.ACTIVE
     db.commit()
