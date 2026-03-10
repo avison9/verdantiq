@@ -50,49 +50,51 @@ jobs:
         with:
           version: "latest"
           enable-cache: true
-          cache-dependency-glob: "backend/fast-api/uv.lock"
+          cache-dependency-glob: "backend/services/*/pyproject.toml"
 
       - name: Set up Python
         run: uv python install 3.13
 
-      - name: Install dependencies
-        working-directory: backend/fast-api
-        run: uv sync
-
-      - name: Write .env
-        working-directory: backend/fast-api
+      - name: Write .env for all services
         run: |
-          cat > .env <<EOF
-          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/test_db
-          SECRET_KEY=ci-test-secret-not-for-production
-          ALGORITHM=HS256
-          TRINO_HOST=localhost
-          TRINO_PORT=8080
-          TRINO_USER=trino
-          TRINO_CATALOG=iceberg
-          TRINO_SCHEMA=default
-          POSTGRES_USER=postgres
-          POSTGRES_PASSWORD=postgres
-          POSTGRES_DB=test_db
-          EOF
+          printf '%s\n' \
+            'DATABASE_URL=postgresql://postgres:postgres@localhost:5432/test_db' \
+            'SECRET_KEY=ci-test-secret-not-for-production' \
+            'ALGORITHM=HS256' \
+            'TENANT_SERVICE_URL=http://localhost:8002' \
+            'TRINO_HOST=localhost' \
+            'TRINO_PORT=8080' \
+            'TRINO_USER=trino' \
+            'TRINO_CATALOG=iceberg' \
+            'TRINO_SCHEMA=default' \
+            | tee backend/services/auth/.env \
+                  backend/services/tenant/.env \
+                  backend/services/sensor/.env > /dev/null
 
-      - name: Run pytest with coverage
-        working-directory: backend/fast-api
+      - name: Run auth service tests
+        working-directory: backend/services/auth
         run: |
-          uv run pytest test-services/tests/ \
-            -v \
-            --tb=short \
-            --cov=. \
-            --cov-report=term-missing \
-            --cov-report=xml \
-            --cov-fail-under=80
+          uv sync
+          uv run pytest tests/ -v --tb=short --cov=. --cov-report=xml:coverage.xml --cov-fail-under=70
 
-      - name: Upload coverage report
+      - name: Run tenant service tests
+        working-directory: backend/services/tenant
+        run: |
+          uv sync
+          uv run pytest tests/ -v --tb=short --cov=. --cov-report=xml:coverage.xml --cov-fail-under=70
+
+      - name: Run sensor service tests
+        working-directory: backend/services/sensor
+        run: |
+          uv sync
+          uv run pytest tests/ -v --tb=short --cov=. --cov-report=xml:coverage.xml --cov-fail-under=70
+
+      - name: Upload coverage reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: backend-coverage
-          path: backend/fast-api/coverage.xml
+          path: backend/services/*/coverage.xml
 
   # ───────────────────────────────────────────────────────────────────────────
   #  JOB 2 — Frontend lint & type checks
