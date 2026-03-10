@@ -59,7 +59,7 @@ jobs:
         run: |
           printf '%s\n' \
             'DATABASE_URL=postgresql://postgres:postgres@localhost:5432/test_db' \
-            'SECRET_KEY=ci-test-secret-not-for-production' \
+            'SECRET_KEY=ci-test-secret-not-for-production-min32!' \
             'ALGORITHM=HS256' \
             'TENANT_SERVICE_URL=http://localhost:8002' \
             'TRINO_HOST=localhost' \
