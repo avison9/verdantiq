@@ -53,7 +53,7 @@ jobs:
           cache-dependency-glob: "backend/fast-api/uv.lock"
 
       - name: Set up Python
-        run: uv python install 3.10
+        run: uv python install 3.13
 
       - name: Install dependencies
         working-directory: backend/fast-api
