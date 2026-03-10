@@ -15,7 +15,7 @@ _hasher = PasswordHash((BcryptHasher(),))
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return _hasher.check(plain_password, hashed_password)
+    return _hasher.verify(plain_password, hashed_password)
 
 
 def get_password_hash(password: str) -> str:
