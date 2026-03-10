@@ -1,3 +1,4 @@
+import os
 import pytest
 import time
 from datetime import datetime, timedelta
@@ -8,19 +9,15 @@ from sqlalchemy.pool import NullPool
 from models import Base
 from main import app, get_db
 from configs import SECRET_KEY, ALGORITHM
-from jose import jwt
+import jwt
 
 # ---------------------
 # DATABASE CONFIGURATION
+# Reads from environment so CI and local dev can override without editing code.
 # ---------------------
-POSTGRES_USER = "postgres"
-POSTGRES_PASSWORD = "postgres"
-POSTGRES_DB = "test_db"
-POSTGRES_HOST = "postgres"
-POSTGRES_PORT = "5432"
-
-TEST_DATABASE_URL = (
-    f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+TEST_DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql://postgres:postgres@postgres:5432/test_db",
 )
 
 # Disable connection pooling (avoids reused sessions that can cause leaks)

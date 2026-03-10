@@ -1,13 +1,8 @@
-fastapi==0.115.0
-uvicorn==0.31.0
-sqlalchemy==2.0.35
-psycopg2-binary==2.9.9
-python-dotenv==1.0.1
-passlib[bcrypt]==1.7.4
-python-jose==3.3.0
-pytest==8.3.3
-httpx==0.27.2
-pydantic[email]
-pytest-xdist
-trino
-
+# DEPRECATED — dependencies are now managed via pyproject.toml + uv
+# See: https://github.com/astral-sh/uv
+#
+# To install production deps:   uv sync --no-dev
+# To install all deps (+ dev):  uv sync
+#
+# This file is kept only for tools that cannot read pyproject.toml.
+# Do not add new dependencies here.

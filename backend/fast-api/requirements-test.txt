@@ -1,0 +1,2 @@
+# DEPRECATED — test dependencies are now in pyproject.toml under [dependency-groups] dev
+# To install: uv sync  (dev group is included by default)
