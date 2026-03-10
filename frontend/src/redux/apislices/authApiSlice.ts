@@ -1,124 +1,106 @@
 import { baseApiSlice } from "./baseSpiSlice";
+import { APIendPoints } from "../../constants/APIendPoints";
 
-// Define types for the data
-interface UserData {
-  firstName: string;
-  lastName: string;
+// ─── Request / Response types (aligned with FastAPI schemas) ─────────────────
+
+export interface RegisterRequest {
   email: string;
   password: string;
-  referrerCode: string;
-}
-interface LoginResponse {
-  status: string;
-  message: string;
-  data: {
-    _id: string;
-    username: string;
-    email: string;
+  first_name: string;
+  last_name: string;
+  tenant_name?: string;
+  tenant_id?: number;
+  tenant_profile?: {
+    country?: string;
+    address?: string;
+    farm_size?: number;
+    crop_types?: string[];
+  };
+  user_profile?: {
+    country?: string;
+    address?: string;
+    role?: string;
+    position?: string;
   };
 }
 
-interface SigninData {
+export interface RegisterResponse {
+  user_id: number;
+  email: string;
+  first_name: string;
+  last_name: string;
+  tenant_id: number;
+  status: string;
+}
+
+export interface LoginRequest {
   email: string;
   password: string;
 }
 
-interface IChangePassword {
-  userId: string;
-  oldPassword: string;
-  newPassword: string;
+export interface LoginResponse {
+  access_token: string;
+  token_type: string;
 }
 
-interface IChangePasswordResponse {
-  status: string;
+export interface ForgotPasswordRequest {
+  email: string;
+}
+
+export interface ResetPasswordRequest {
+  token: string;
+  new_password: string;
+}
+
+export interface MessageResponse {
   message: string;
 }
 
-interface VerificationData {
-  email: string;
-  username: string;
-  otp: string;
-}
-
-interface IResetPassword {
-  email: string;
-  newPassword: string;
-  resetCode: string;
-}
-interface IResponse {
-  status: string;
-  message: string;
-}
-
-// username is gotten from email in this project newEmail.split('@)[0]
+// ─── Endpoints ───────────────────────────────────────────────────────────────
 
 export const authApiSlice = baseApiSlice.injectEndpoints({
   endpoints: (builder) => ({
-    signup: builder.mutation<any, UserData>({
+    register: builder.mutation<RegisterResponse, RegisterRequest>({
       query: (data) => ({
-        url: `signup`,
+        url: APIendPoints.register,
         method: "POST",
         body: data,
       }),
     }),
-    signin: builder.mutation<LoginResponse, SigninData>({
+    login: builder.mutation<LoginResponse, LoginRequest>({
       query: (data) => ({
-        url: `signin`,
+        url: APIendPoints.login,
         method: "POST",
         body: data,
       }),
     }),
-    verifyEmail: builder.mutation<LoginResponse, VerificationData>({
-      query: (data) => ({
-        url: `verify-email`,
-        method: "POST",
-        body: data,
-      }),
-    }),
-    resendOtp: builder.mutation<any, { email: string }>({
-      query: (data) => ({
-        url: `resend-otp`,
-        method: "POST",
-        body: data,
-      }),
-    }),
-    forgotPassword: builder.mutation<IResponse, { email: string }>({
-      query: (data) => ({
-        url: `/forgot-password`,
-        method: "POST",
-        body: data,
-      }),
-    }),
-    resetPassword: builder.mutation<IResponse, IResetPassword>({
-      query: (data) => ({
-        url: `reset-password`,
-        method: "POST",
-        body: data,
-      }),
-    }),
-    changePassword: builder.mutation<IChangePasswordResponse, IChangePassword>({
-      query: (data) => ({
-        url: `/change-password`,
-        method: "PUT",
-        body: data,
-      }),
-    }),
-    signout: builder.mutation<void, void>({
+    logout: builder.mutation<MessageResponse, void>({
       query: () => ({
-        url: `signout`,
+        url: APIendPoints.logout,
         method: "POST",
+      }),
+    }),
+    forgotPassword: builder.mutation<MessageResponse, ForgotPasswordRequest>({
+      query: (data) => ({
+        url: APIendPoints.forgotPassword,
+        method: "POST",
+        body: data,
+      }),
+    }),
+    resetPassword: builder.mutation<MessageResponse, ResetPasswordRequest>({
+      query: (data) => ({
+        url: APIendPoints.resetPassword,
+        method: "POST",
+        body: data,
       }),
     }),
   }),
 });
 
 export const {
-  useSignupMutation,
-  useSigninMutation,
-  useSignoutMutation,
-  useVerifyEmailMutation,
+  useRegisterMutation,
+  useLoginMutation,
+  useLogoutMutation,
   useForgotPasswordMutation,
   useResetPasswordMutation,
-  useChangePasswordMutation,
-  useResendOtpMutation,
 } = authApiSlice;

@@ -1,49 +1,56 @@
 services:
   app:
-    container_name: app
+    container_name: verdantiq-api
     build:
       context: .
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
-    # env_file:
-    #   - .env
+    env_file:
+      - .env
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     volumes:
       - .:/app
     networks:
       - verdantiq_network
+    profiles: [backend, full]
 
   postgres:
     image: postgres:15
-    container_name: postgres
+    container_name: verdantiq-postgres
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: test_db
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-test_db}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - verdantiq_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles: [backend, full]
 
   test:
     build:
       context: .
       dockerfile: test-services/Dockerfile
-    container_name: test-api
-    # env_file:
-    #   - .env
+    container_name: verdantiq-test
+    env_file:
+      - .env
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     volumes:
       - ./:/app
-    working_dir: /app/test-services 
-    command: ["pytest", "-v", "tests"]
-    environment:
-      - PYTHONPATH=/app
+    working_dir: /app/test-services
     networks:
       - verdantiq_network
+    profiles: [test]
 
 volumes:
   postgres_data:

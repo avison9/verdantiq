@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import trino
+from configs import settings
 
 # Pricing
 SENSOR_MESSAGE_COST = 0.10 / 100000  # $0.10 per 100,000 messages
@@ -271,11 +272,11 @@ def update_sensor_message_count(db: Session, sensor_id: int, message_increment: 
 
 def get_sensor_data(sensor_id: int, tenant_id: int) -> List[schemas.SensorDataPoint]:
     conn = trino.dbapi.connect(
-        host="trino_host",  
-        port=8080,
-        user="user",
-        catalog="iceberg",
-        schema="default"
+        host=settings.TRINO_HOST,
+        port=settings.TRINO_PORT,
+        user=settings.TRINO_USER,
+        catalog=settings.TRINO_CATALOG,
+        schema=settings.TRINO_SCHEMA,
     )
     cur = conn.cursor()
     query = """

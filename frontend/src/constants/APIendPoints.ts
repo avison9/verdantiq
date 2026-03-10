@@ -1,10 +1,17 @@
-const BASE_URL = "http://192.168.110.46/1100/api/v1/";
+const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+
 export const APIendPoints = {
   baseUrl: BASE_URL,
-  login: ``,
-  register: ``,
-  verify: ``,
-  forgotpasword: ``,
-  resetpassword: ``,
-  dashboard: ``,
+  // Auth
+  register: "register",
+  login: "login",
+  logout: "logout",
+  forgotPassword: "forgot-password",
+  resetPassword: "reset-password",
+  // Users
+  me: "users/me",
+  // Sensors
+  sensors: "sensors",
+  // Billing
+  billings: "billings",
 };

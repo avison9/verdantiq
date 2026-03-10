@@ -3,7 +3,6 @@ from pwdlib.hashers.bcrypt import BcryptHasher
 import jwt as pyjwt
 from jwt.exceptions import InvalidTokenError
 from fastapi import HTTPException, status, Request
-from fastapi.responses import JSONResponse
 from datetime import datetime, timedelta
 from configs import SECRET_KEY, ALGORITHM
 from sqlalchemy.orm import Session
@@ -16,7 +15,7 @@ _hasher = PasswordHash((BcryptHasher(),))
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return _hasher.check(plain_password, hashed_password)
+    return _hasher.verify(plain_password, hashed_password)
 
 
 def get_password_hash(password: str) -> str:
@@ -38,16 +37,10 @@ def decode_access_token(token: str) -> dict:
         user_id: str = payload.get("sub")
         tenant_id: str = payload.get("tenant_id")
         if user_id is None or tenant_id is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token",
-            )
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
         return {"user_id": int(user_id), "tenant_id": int(tenant_id)}
     except InvalidTokenError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token",
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
 
 # ─── Session management ───────────────────────────────────────────────────────
@@ -59,25 +52,17 @@ def create_session(
     request: Request,
     expires_delta: timedelta,
 ):
-    token = create_access_token(
-        {"sub": str(user_id), "tenant_id": str(tenant_id)}, expires_delta
-    )
-    device_info = {
-        "user_agent": request.headers.get("User-Agent", "unknown"),
-        "device_type": request.headers.get("Sec-CH-UA-Platform", "unknown"),
-        "browser": request.headers.get("Sec-CH-UA", "unknown"),
-    }
-    network_info = {
-        "ip_address": request.client.host,
-        "network_type": "unknown",
-    }
+    token = create_access_token({"sub": str(user_id), "tenant_id": str(tenant_id)}, expires_delta)
     db_session = DBSession(
         user_id=user_id,
         tenant_id=tenant_id,
         token=token,
         expires_at=datetime.utcnow() + expires_delta,
-        device_info=device_info,
-        network_info=network_info,
+        device_info={
+            "user_agent": request.headers.get("User-Agent", "unknown"),
+            "device_type": request.headers.get("Sec-CH-UA-Platform", "unknown"),
+        },
+        network_info={"ip_address": request.client.host},
         agric_metadata={},
     )
     db.add(db_session)

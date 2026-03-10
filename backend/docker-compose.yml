@@ -1,0 +1,127 @@
+networks:
+  verdantiq-net:
+    driver: bridge
+    name: verdantiq-net
+
+# =============================================================================
+#  Backend Services
+#  --profile backend  → postgres + auth + tenant + sensor + gateway
+#  --profile test     → postgres + test-infra
+#
+#  Run standalone:   docker compose -f backend/docker-compose.yml --profile backend up
+#  Run with data:    use root Makefile → make dev or make dev-dataservices
+# =============================================================================
+
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    profiles: [backend, test]
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-verdantiq}
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mypassword}
+    ports:
+      - "5432:5432"
+    networks:
+      - verdantiq-net
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-verdantiq}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Auth Service ────────────────────────────────────────────────────────────
+  auth:
+    build:
+      context: services/auth
+      dockerfile: Dockerfile
+    container_name: auth
+    profiles: [backend]
+    env_file: ../.env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-mypassword}@postgres:5432/${POSTGRES_DB:-verdantiq}
+    ports:
+      - "8001:8001"
+    networks:
+      - verdantiq-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── Tenant Service ──────────────────────────────────────────────────────────
+  tenant:
+    build:
+      context: services/tenant
+      dockerfile: Dockerfile
+    container_name: tenant
+    profiles: [backend]
+    env_file: ../.env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-mypassword}@postgres:5432/${POSTGRES_DB:-verdantiq}
+    ports:
+      - "8002:8002"
+    networks:
+      - verdantiq-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── Sensor Service ──────────────────────────────────────────────────────────
+  sensor:
+    build:
+      context: services/sensor
+      dockerfile: Dockerfile
+    container_name: sensor
+    profiles: [backend]
+    env_file: ../.env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-mypassword}@postgres:5432/${POSTGRES_DB:-verdantiq}
+      TENANT_SERVICE_URL: http://tenant:8002
+    ports:
+      - "8003:8003"
+    networks:
+      - verdantiq-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      tenant:
+        condition: service_started
+
+  # ── API Gateway ─────────────────────────────────────────────────────────────
+  gateway:
+    build:
+      context: gateway
+      dockerfile: Dockerfile
+    container_name: gateway
+    profiles: [backend]
+    ports:
+      - "8000:8000"
+    networks:
+      - verdantiq-net
+    depends_on:
+      - auth
+      - tenant
+      - sensor
+
+  # ── Test Infrastructure ─────────────────────────────────────────────────────
+  test-infra:
+    build:
+      context: ..
+      dockerfile: backend/test-infra/Dockerfile
+    container_name: test-infra
+    profiles: [test]
+    networks:
+      - verdantiq-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      TEST_TIMEOUT: 300
+
+volumes:
+  pg_data:
