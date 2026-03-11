@@ -36,7 +36,7 @@ services:
     networks:
       - verdantiq-net
     healthcheck:
-      test: ["CMD", "/zkok.sh"]
+      test: ["CMD-SHELL", "sh /zkok.sh"]
       interval: 15s
       timeout: 30s
       retries: 10
@@ -64,7 +64,7 @@ services:
     networks:
       - verdantiq-net
     healthcheck:
-      test: ["CMD", "/zkok.sh"]
+      test: ["CMD-SHELL", "sh /zkok.sh"]
       interval: 15s
       timeout: 30s
       retries: 10
