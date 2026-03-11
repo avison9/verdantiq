@@ -159,18 +159,18 @@ jobs:
       - name: Write root .env
         run: |
           cat > .env <<EOF
-          POSTGRES_USER=postgres
-          POSTGRES_PASSWORD=postgres
+          POSTGRES_USER=admin
+          POSTGRES_PASSWORD=mypassword
           POSTGRES_DB=verdantiq
-          DATABASE_URL=postgresql://postgres:postgres@postgres:5432/verdantiq
+          DATABASE_URL=postgresql://admin:mypassword@postgres:5432/verdantiq
           SECRET_KEY=ci-test-secret-not-for-production
           ALGORITHM=HS256
-          MINIO_ROOT_USER=minioadmin
-          MINIO_ROOT_PASSWORD=minioadmin
-          MINIO_DOMAIN=localhost
+          TENANT_SERVICE_URL=http://tenant:8002
+          MINIO_ROOT_USER=admin
+          MINIO_ROOT_PASSWORD=myminiopassword
           S3_ENDPOINT=http://minio:9000
-          GRAFANA_ADMIN_PASSWORD=admin
-          KAFKA_SASL_PASSWORD=kafka
+          GRAFANA_ADMIN_USER=admin
+          GRAFANA_ADMIN_PASSWORD=myDevPass123
           TRINO_HOST=trino
           TRINO_PORT=8080
           TRINO_USER=trino
@@ -179,12 +179,17 @@ jobs:
           EOF
 
       - name: Start full stack
-        run: docker compose up -d --build
-
-      - name: Wait for services to become healthy
         run: |
-          echo "Waiting 60s for services to stabilise..."
-          sleep 60
+          docker compose --profile backend --profile full up --build -d
+          echo "Waiting for all services to report healthy (up to 300s)..."
+          timeout 300 bash -c '
+            until [ "$(docker compose --profile backend --profile full ps --status running --quiet | wc -l)" -gt 0 ] \
+              && ! docker compose --profile backend --profile full ps | grep -E "starting|unhealthy"; do
+              sleep 10
+              echo "Still waiting..."
+            done
+          ' || true
+          sleep 20
 
       - name: Install infra test dependencies
         working-directory: backend/test-infra
@@ -197,4 +202,4 @@ jobs:
 
       - name: Tear down
         if: always()
-        run: docker compose down -v --remove-orphans
+        run: docker compose --profile backend --profile full down -v --remove-orphans
