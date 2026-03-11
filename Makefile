@@ -74,7 +74,7 @@ dev: ## Start the full stack (backend + data services + monitoring)
 dev-backend: ## Start auth + tenant + sensor + gateway + postgres
 	$(COMPOSE_BACKEND) --profile backend up --build
 
-dev-dataservices: ## Start Kafka + Spark + MinIO + Iceberg
+dev-dataservices: ## Start Kafka + Spark + MinIO + Iceberg + Trino
 	$(COMPOSE_DATASERVICES) --profile dataservices up --build
 
 dev-monitor: ## Start Prometheus + Grafana
@@ -223,3 +223,10 @@ shell-sensor: ## Open a shell in the running sensor container
 
 shell-db: ## Open a psql shell in the running Postgres container
 	docker exec -it postgres psql -U $${POSTGRES_USER:-admin} -d $${POSTGRES_DB:-verdantiq}
+
+shell-trino: ## Open a Trino CLI session
+	docker exec -it trino trino
+
+trino-status: ## Check Trino cluster info
+	@curl -s http://localhost:8085/v1/info | python3 -m json.tool 2>/dev/null \
+		|| echo "Trino not running — start with: make dev-dataservices"
