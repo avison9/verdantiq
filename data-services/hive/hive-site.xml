@@ -1,0 +1,49 @@
+<!-- hive-metastore-site/hive-site.xml -->
+<configuration>
+  <property>
+    <name>fs.s3a.access.key</name>
+    <value>${env:AWS_ACCESS_KEY_ID}</value>
+  </property>
+  <property>
+    <name>fs.s3a.secret.key</name>
+    <value>${env:AWS_SECRET_ACCESS_KEY}</value>
+  </property>
+  <property>
+    <name>fs.s3a.endpoint</name>
+    <value>${env:S3_ENDPOINT}</value>
+  </property>
+  <property>
+    <name>fs.s3a.path.style.access</name>
+    <value>true</value>
+  </property>
+  <property>
+    <name>fs.s3a.impl</name>
+    <value>org.apache.hadoop.fs.s3a.S3AFileSystem</value>
+  </property>
+  
+  <!-- Delta Lake specific -->
+  <property>
+    <name>hive.metastore.warehouse.dir</name>
+    <value>s3a://warehouse/</value>
+  </property>
+  <property>
+    <name>hive.delta.warehouse.root</name>
+    <value>s3a://delta-tables/</value>
+  </property>
+
+  <!--adding thrift uri-->
+  <property>
+    <name>hive.metastore.uris</name>
+    <value>thrift://hive-metastore:9083</value>
+  </property>
+
+  <!-- performance tuning for MinIO -->
+  <property>
+  <name>fs.s3a.connection.maximum</name>
+  <value>1000</value>
+  </property>
+  <property>
+    <name>fs.s3a.threads.max</name>
+    <value>500</value>
+  </property>
+</configuration>

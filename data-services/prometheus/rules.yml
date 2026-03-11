@@ -1,0 +1,11 @@
+groups:
+  - name: kafka-alerts
+    rules:
+      - alert: HighKafkaLag
+        expr: kafka_consumer_lag > 1000
+        for: 5m
+        labels:
+          severity: 'critical'
+        annotations:
+          summary: "High Kafka lag detected ({{ $value }} seconds)"
+          description: "Topic {{ $labels.topic }} has high consumer lag for 5 minutes."
