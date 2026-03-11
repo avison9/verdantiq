@@ -16,9 +16,11 @@ RUN apt-get update && \
 
 RUN rm -f /opt/spark/jars/guava-*.jar
 
-RUN rm -f /opt/spark/jars/hadoo*.jar
-
 # Download required JARs from Maven Central at build time
+# NOTE: do NOT remove hadoop-*.jar — Spark 3.5.0 needs hadoop-client-api and
+# hadoop-client-runtime from the base image. Only guava is replaced to fix
+# the version-conflict with iceberg/delta, and hadoop-aws + aws-sdk are added
+# as extensions on top of the existing Hadoop distribution.
 RUN set -e && \
     MAVEN=https://repo1.maven.org/maven2 && \
     wget -q -P /opt/spark/jars/ \
