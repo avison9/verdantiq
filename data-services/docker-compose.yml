@@ -1,0 +1,396 @@
+networks:
+  verdantiq-net:
+    driver: bridge
+    name: verdantiq-net
+
+# =============================================================================
+#  Data Services
+#  --profile dataservices  → zookeeper + kafka + spark + minio + iceberg
+#  --profile monitor       → prometheus + grafana
+#  --profile full          → all of the above
+#
+#  Run standalone:   docker compose -f data-services/docker-compose.yml --profile dataservices up
+#  Run with backend: use root Makefile → make dev or make dev-dataservices
+# =============================================================================
+
+services:
+
+  # ── Zookeeper ───────────────────────────────────────────────────────────────
+  zookeeper-1:
+    container_name: zookeeper-1
+    build:
+      context: ..
+      dockerfile: data-services/kafka/zookeeper/Dockerfile.zookeeper
+    profiles: [dataservices, full]
+    ports:
+      - "2181:2181"
+    environment:
+      ZOO_MY_ID: 1
+      ZOO_SERVERS: server.1=zookeeper-1:2888:3888;2181 server.2=zookeeper-2:2888:3888;2181
+      ZOO_CLIENT_PORT: 2181
+      ZOO_4LW_COMMANDS_WHITELIST: ruok
+    volumes:
+      - zk_data1:/data
+      - zk_log1:/datalog
+      - ./kafka/kafka_utils/zkok.sh:/zkok.sh
+    networks:
+      - verdantiq-net
+    healthcheck:
+      test: ["CMD", "/zkok.sh"]
+      interval: 15s
+      timeout: 30s
+      retries: 5
+
+  zookeeper-2:
+    container_name: zookeeper-2
+    build:
+      context: ..
+      dockerfile: data-services/kafka/zookeeper/Dockerfile.zookeeper
+    profiles: [dataservices, full]
+    ports:
+      - "2182:2181"
+    environment:
+      ZOO_MY_ID: 2
+      ZOO_SERVERS: server.1=zookeeper-1:2888:3888;2181 server.2=zookeeper-2:2888:3888;2181
+      ZOO_CLIENT_PORT: 2181
+      ZOO_4LW_COMMANDS_WHITELIST: ruok
+    volumes:
+      - zk_data2:/data
+      - zk_log2:/datalog
+      - ./kafka/kafka_utils/zkok.sh:/zkok.sh
+    depends_on:
+      - zookeeper-1
+    networks:
+      - verdantiq-net
+    healthcheck:
+      test: ["CMD", "/zkok.sh"]
+      interval: 15s
+      timeout: 30s
+      retries: 5
+
+  # ── Kafka Brokers ───────────────────────────────────────────────────────────
+  kafka1:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka1
+    profiles: [dataservices, full]
+    depends_on:
+      zookeeper-1:
+        condition: service_healthy
+      zookeeper-2:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper-1:2181,zookeeper-2:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka1:9092,PLAINTEXT_HOST://localhost:19092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+    ports:
+      - "19092:19092"
+    networks:
+      - verdantiq-net
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--list", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 30s
+      retries: 3
+
+  kafka2:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka2
+    profiles: [dataservices, full]
+    depends_on:
+      zookeeper-1:
+        condition: service_healthy
+      zookeeper-2:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 2
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper-1:2181,zookeeper-2:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka2:9093,PLAINTEXT_HOST://localhost:19093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+    ports:
+      - "19093:19093"
+    networks:
+      - verdantiq-net
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--list", "--bootstrap-server", "localhost:9093"]
+      interval: 10s
+      timeout: 30s
+      retries: 3
+
+  kafka3:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka3
+    profiles: [dataservices, full]
+    depends_on:
+      zookeeper-1:
+        condition: service_healthy
+      zookeeper-2:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 3
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper-1:2181,zookeeper-2:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka3:9094,PLAINTEXT_HOST://localhost:19094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+    ports:
+      - "19094:19094"
+    networks:
+      - verdantiq-net
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--list", "--bootstrap-server", "localhost:9094"]
+      interval: 10s
+      timeout: 30s
+      retries: 3
+
+  kafka4:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka4
+    profiles: [dataservices, full]
+    depends_on:
+      zookeeper-1:
+        condition: service_healthy
+      zookeeper-2:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 4
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper-1:2181,zookeeper-2:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka4:9095,PLAINTEXT_HOST://localhost:19095
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+    ports:
+      - "19095:19095"
+    networks:
+      - verdantiq-net
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--list", "--bootstrap-server", "localhost:9095"]
+      interval: 10s
+      timeout: 30s
+      retries: 3
+
+  schema-registry:
+    build:
+      context: ..
+      dockerfile: data-services/kafka/schema-registry/Dockerfile.schema-registry
+    container_name: schema-registry
+    profiles: [dataservices, full]
+    depends_on:
+      kafka1:
+        condition: service_healthy
+      kafka2:
+        condition: service_healthy
+      kafka3:
+        condition: service_healthy
+      kafka4:
+        condition: service_healthy
+    ports:
+      - "8089:8089"
+      - "9101:9101"
+    environment:
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: "kafka1:9092,kafka2:9093,kafka3:9094,kafka4:9095"
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_LISTENERS: "http://0.0.0.0:8089"
+      SCHEMA_REGISTRY_AVRO_AUTO_REGISTER_SCHEMAS: "true"
+      SCHEMA_REGISTRY_SCHEMA_COMPATIBILITY: "BACKWARD"
+    networks:
+      - verdantiq-net
+
+  kafka-exporter:
+    build:
+      context: ..
+      dockerfile: data-services/kafka/exporter/Dockerfile.kafkaexporter
+    container_name: kafka-exporter
+    profiles: [dataservices, full]
+    ports:
+      - "9308:9308"
+    depends_on:
+      kafka1:
+        condition: service_healthy
+      kafka2:
+        condition: service_healthy
+      kafka3:
+        condition: service_healthy
+      kafka4:
+        condition: service_healthy
+    networks:
+      - verdantiq-net
+
+  # ── MinIO ───────────────────────────────────────────────────────────────────
+  minio:
+    image: minio/minio
+    container_name: minio
+    profiles: [dataservices, full]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-myminiopassword}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    networks:
+      - verdantiq-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # ── Spark ───────────────────────────────────────────────────────────────────
+  spark-master:
+    build:
+      context: ..
+      dockerfile: data-services/spark/Dockerfile.spark
+    container_name: spark-master
+    profiles: [dataservices, full]
+    environment:
+      - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      - SPARK_DAEMON_MEMORY=1g
+      - SPARK_LOAD_SPARK_ICEBERG=true
+      - SPARK_CONF_DIR=/opt/spark/conf
+      - HADOOP_PROXY_USER=root
+      - HADOOP_SECURITY_AUTHENTICATION=simple
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    networks:
+      - verdantiq-net
+    depends_on:
+      minio:
+        condition: service_healthy
+    volumes:
+      - spark_data:/opt/spark/data
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 1G
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080 || exit 1"]
+      interval: 30s
+      timeout: 30s
+      retries: 5
+
+  spark-worker3:
+    build:
+      context: ..
+      dockerfile: data-services/spark/Dockerfile.spark
+    container_name: spark-worker3
+    profiles: [dataservices, full]
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=2000M
+      - SPARK_WORKER_CORES=2
+      - SPARK_LOAD_SPARK_ICEBERG=true
+      - SPARK_CONF_DIR=/opt/spark/conf
+      - HADOOP_USER_NAME=root
+      - HADOOP_PROXY_USER=root
+      - HADOOP_SECURITY_AUTHENTICATION=simple
+    ports:
+      - "8083:8081"
+    volumes:
+      - spark_data:/opt/spark/data
+    networks:
+      - verdantiq-net
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8081 || exit 1"]
+      interval: 20s
+      timeout: 30s
+      retries: 5
+
+  # ── Iceberg REST Catalog ────────────────────────────────────────────────────
+  iceberg-rest:
+    container_name: iceberg
+    build:
+      context: ..
+      dockerfile: data-services/iceberg/Dockerfile.iceberg
+    profiles: [dataservices, full]
+    ports:
+      - "8181:8181"
+    environment:
+      - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER:-admin}
+      - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD:-myminiopassword}
+      - AWS_REGION=us-east-1
+      - CATALOG_WAREHOUSE=s3a://iceberg/
+      - CATALOG_IO__IMPL=org.apache.iceberg.aws.s3.S3FileIO
+      - CATALOG_S3_ENDPOINT=http://minio:9000
+      - CATALOG_S3_PATH-STYLE-ACCESS=true
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - verdantiq-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -o /dev/null -w '%{http_code}' http://localhost:8181/v1/config | grep -q '200'"]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+
+  # ── Prometheus ──────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    profiles: [monitor, full]
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/rules.yml:/etc/prometheus/rules.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - verdantiq-net
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+
+  # ── Grafana ─────────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    profiles: [monitor, full]
+    ports:
+      - "3000:3000"
+    networks:
+      - verdantiq-net
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana:/var/lib/grafana/dashboards
+      - ./grafana/conf:/etc/grafana/provisioning/dashboards/conf
+      - ./grafana/dashboard:/etc/grafana/provisioning/dashboards/dashboard
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-myDevPass123}
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  minio_data:
+  prometheus_data:
+  grafana_data:
+  zk_data1:
+  zk_log1:
+  zk_data2:
+  zk_log2:
+  spark_data:

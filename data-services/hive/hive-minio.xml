@@ -1,0 +1,117 @@
+<configuration>
+  <!-- PostgreSQL Metastore Configuration -->
+  <property>
+    <name>javax.jdo.option.ConnectionURL</name>
+    <value>jdbc:postgresql://postgres:5432/metastore</value>
+  </property>
+  <property>
+    <name>javax.jdo.option.ConnectionDriverName</name>
+    <value>org.postgresql.Driver</value>
+  </property>
+  <property>
+    <name>javax.jdo.option.ConnectionUserName</name>
+    <value>hiveadmin</value>
+  </property>
+  <property>
+    <name>javax.jdo.option.ConnectionPassword</name>
+    <value>hivepassword</value>
+  </property>
+  <property>
+    <name>datanucleus.rdbms.datastoreAdapterClassName</name>
+    <value>org.datanucleus.store.rdbms.adapter.PostgreSQLAdapter</value>
+  </property>
+  <property>
+    <name>datanucleus.schema.autoCreateTables</name>
+    <value>true</value>
+  </property>
+  <property>
+    <name>hive.metastore.db.type</name>
+    <value>postgres</value>
+  </property>
+  <property>
+    <name>hive.server2.thrift.bind.host</name>
+    <value>0.0.0.0</value>
+  </property>
+  <property>
+    <name>hive.server2.thrift.port</name>
+    <value>10000</value>
+  </property>
+  <property>
+    <name>hive.metastore.uris</name>
+    <value>thrift://hive-metastore:9083</value>
+  </property>
+  <property>
+    <name>hive.server2.transport.mode</name>
+    <value>binary</value>
+  </property>
+  <property>
+    <name>hive.server2.enable.doAs</name>
+    <value>false</value>
+  </property>
+
+  <!-- Disable Derby -->
+  <property>
+    <name>hive.metastore.local</name>
+    <value>false</value>
+  </property>
+
+  <!-- Schema Management -->
+  <property>
+    <name>hive.metastore.schema.verification</name>
+    <value>false</value>
+  </property>
+  <property>
+    <name>datanucleus.schema.autoCreateAll</name>
+    <value>true</value>
+  </property>
+  <property>
+    <name>hive.metastore.event.db.notification.api.auth</name>
+    <value>false</value>
+  </property>
+
+  <!-- MinIO/S3 Storage Configuration -->
+  <property>
+    <name>hive.metastore.warehouse.dir</name>
+    <value>s3a://hive/warehouse/</value>
+  </property>
+  <property>
+    <name>fs.s3a.access.key</name>
+    <value>myminiouser</value>  <!-- Match your MinIO credentials -->
+  </property>
+  <property>
+    <name>fs.s3a.secret.key</name>
+    <value>myminiopassword</value>  <!-- Match your MinIO credentials -->
+  </property>
+  <property>
+    <name>fs.s3a.endpoint</name>
+    <value>http://minio:9000</value>
+  </property>
+  <property>
+    <name>fs.s3a.path.style.access</name>
+    <value>true</value>  <!-- Required for MinIO -->
+  </property>
+  <property>
+    <name>fs.s3a.impl</name>
+    <value>org.apache.hadoop.fs.s3a.S3AFileSystem</value>
+  </property>
+  <property>
+    <name>fs.s3a.connection.ssl.enabled</name>
+    <value>false</value>  <!-- MinIO uses HTTP by default -->
+  </property>
+  
+  <!-- Performance Optimizations -->
+  <property>
+    <name>hive.exec.parallel</name>
+    <value>true</value>
+  </property>
+  <property>
+    <name>hive.metastore.client.socket.timeout</name>
+    <value>300</value>
+  </property>
+  
+  <!-- Required for Hive 4.x -->
+  <property>
+    <name>hive.metastore.disallow.incompatible.col.type.changes</name>
+    <value>false</value>
+  </property>
+</configuration>
