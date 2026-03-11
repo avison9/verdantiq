@@ -18,8 +18,17 @@ RUN rm -f /opt/spark/jars/guava-*.jar
 
 RUN rm -f /opt/spark/jars/hadoo*.jar
 
-
-COPY --chown=spark:spark data-services/libs/jdbc/*  /opt/spark/jars/
+# Download required JARs from Maven Central at build time
+RUN set -e && \
+    MAVEN=https://repo1.maven.org/maven2 && \
+    wget -q -P /opt/spark/jars/ \
+      "$MAVEN/org/apache/iceberg/iceberg-spark-runtime-3.5_2.12/1.4.2/iceberg-spark-runtime-3.5_2.12-1.4.2.jar" \
+      "$MAVEN/org/apache/hadoop/hadoop-aws/3.3.6/hadoop-aws-3.3.6.jar" \
+      "$MAVEN/com/amazonaws/aws-java-sdk-bundle/1.12.100/aws-java-sdk-bundle-1.12.100.jar" \
+      "$MAVEN/com/google/guava/guava/30.1.1-jre/guava-30.1.1-jre.jar" \
+      "$MAVEN/io/delta/delta-core_2.12/2.4.0/delta-core_2.12-2.4.0.jar" \
+      "$MAVEN/io/delta/delta-storage/2.4.0/delta-storage-2.4.0.jar" && \
+    chown spark:spark /opt/spark/jars/*.jar
 
 
 COPY --chown=spark:spark data-services/spark/config/configuration.conf /opt/spark/conf/spark-defaults.conf
