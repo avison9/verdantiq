@@ -8,7 +8,7 @@ import models
 import schemas
 import crud
 from authenticate import verify_password, create_session, expire_session, decode_access_token
-from configs import get_db, Base, engine
+from configs import get_db, Base, engine, ALLOWED_ORIGINS
 
 
 @asynccontextmanager
@@ -21,7 +21,7 @@ app = FastAPI(title="VerdantIQ Auth Service", version="1.0.0", lifespan=lifespan
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
