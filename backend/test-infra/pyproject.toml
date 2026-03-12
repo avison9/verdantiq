@@ -12,6 +12,9 @@ dependencies = [
     "trino>=0.330.0",
 ]
 
+[tool.uv]
+package = false
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v --tb=short"
