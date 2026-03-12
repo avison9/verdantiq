@@ -300,3 +300,244 @@ def test_active_billing_required_before_sensor_onboarding(client, sensor_payload
     response = client.post("/sensors/", json=sensor_payload)
     assert response.status_code == 403
     assert "billing" in response.json()["detail"].lower()
+
+
+# ── Coverage additions ─────────────────────────────────────────────────────────
+
+import jwt as _pyjwt
+import pytest
+import httpx
+from datetime import datetime, timedelta, timezone
+from unittest.mock import patch, MagicMock, AsyncMock as _AsyncMock
+
+
+_TEST_SECRET = "test-secret-for-ci-only-min-32-bytes!"
+_TEST_ALGO = "HS256"
+
+
+# ── sensor/authenticate.py coverage ─────────────────────────────────────────
+
+def test_decode_token_invalid_jwt():
+    from authenticate import decode_access_token
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as exc:
+        decode_access_token("invalid.token.here")
+    assert exc.value.status_code == 401
+
+
+def test_decode_token_missing_fields():
+    from authenticate import decode_access_token
+    from fastapi import HTTPException
+    token = _pyjwt.encode({"foo": "bar"}, _TEST_SECRET, algorithm=_TEST_ALGO)
+    with pytest.raises(HTTPException) as exc:
+        decode_access_token(token)
+    assert exc.value.status_code == 401
+
+
+def test_decode_token_valid():
+    from authenticate import decode_access_token
+    token = _pyjwt.encode(
+        {"user_id": 1, "tenant_id": 1, "exp": datetime.now(timezone.utc) + timedelta(minutes=30)},
+        _TEST_SECRET, algorithm=_TEST_ALGO,
+    )
+    payload = decode_access_token(token)
+    assert payload["user_id"] == 1
+
+
+# ── sensor/configs.py coverage ───────────────────────────────────────────────
+
+def test_sensor_get_db_yields_and_closes():
+    from configs import get_db
+    gen = get_db()
+    db = next(gen)
+    assert db is not None
+    try:
+        next(gen)
+    except StopIteration:
+        pass
+
+
+# ── sensor/crud.py coverage ──────────────────────────────────────────────────
+
+def test_get_sensor_data_crud_success():
+    """get_sensor_data returns SensorDataPoint list on success."""
+    import crud
+    mock_conn = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.fetchall.return_value = [("2025-01-01T00:00:00", {"temp": 25})]
+    mock_conn.cursor.return_value = mock_cursor
+    with patch("crud.trino.dbapi.connect", return_value=mock_conn):
+        result = crud.get_sensor_data(1, 1)
+    assert len(result) == 1
+    assert result[0].value == {"temp": 25}
+
+
+def test_get_sensor_data_crud_exception_wrapping():
+    """Non-trino exceptions in get_sensor_data are re-raised as DatabaseError."""
+    import crud
+    import trino.exceptions
+    mock_conn = MagicMock()
+    mock_conn.cursor.side_effect = Exception("network error")
+    with patch("crud.trino.dbapi.connect", return_value=mock_conn):
+        with pytest.raises(trino.exceptions.DatabaseError):
+            crud.get_sensor_data(1, 1)
+
+
+# ── sensor/main.py: get_current_user coverage ────────────────────────────────
+
+@pytest.fixture
+def raw_client():
+    """Client without get_current_user override so we can test the real auth flow."""
+    from fastapi.testclient import TestClient
+    from main import app, get_current_user as _gcu
+    overrides_backup = app.dependency_overrides.copy()
+    app.dependency_overrides.pop(_gcu, None)
+    yield TestClient(app)
+    app.dependency_overrides = overrides_backup
+
+
+def test_get_current_user_no_token(raw_client):
+    """Request without cookie → 401."""
+    resp = raw_client.get("/sensors/?tenant_id=1")
+    assert resp.status_code == 401
+
+
+def test_get_current_user_invalid_token(raw_client):
+    """Garbage token → 401."""
+    raw_client.cookies.set("access_token", "bad.token.here")
+    resp = raw_client.get("/sensors/?tenant_id=1")
+    assert resp.status_code == 401
+
+
+def test_get_current_user_missing_claims(raw_client):
+    """Token without user_id/tenant_id → 401."""
+    token = _pyjwt.encode({"foo": "bar"}, _TEST_SECRET, algorithm=_TEST_ALGO)
+    raw_client.cookies.set("access_token", token)
+    resp = raw_client.get("/sensors/?tenant_id=1")
+    assert resp.status_code == 401
+
+
+def test_get_current_user_user_not_found(raw_client):
+    """Valid token but user not in DB → 401."""
+    token = _pyjwt.encode(
+        {"user_id": 999999, "tenant_id": 999999,
+         "exp": datetime.now(timezone.utc) + timedelta(minutes=30)},
+        _TEST_SECRET, algorithm=_TEST_ALGO,
+    )
+    raw_client.cookies.set("access_token", token)
+    resp = raw_client.get("/sensors/?tenant_id=999999")
+    assert resp.status_code == 401
+
+
+def test_get_current_user_expired_session(raw_client, mock_user, db_session):
+    """User exists but session is expired → 401."""
+    token = _pyjwt.encode(
+        {"user_id": mock_user.user_id, "tenant_id": mock_user.tenant_id,
+         "exp": datetime.now(timezone.utc) + timedelta(minutes=30)},
+        _TEST_SECRET, algorithm=_TEST_ALGO,
+    )
+    db_session.add(models.Session(
+        user_id=mock_user.user_id,
+        tenant_id=mock_user.tenant_id,
+        token=token,
+        expires_at=datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=1),
+        status=models.SessionStatus.active,
+    ))
+    db_session.commit()
+    raw_client.cookies.set("access_token", token)
+    resp = raw_client.get(f"/sensors/?tenant_id={mock_user.tenant_id}")
+    assert resp.status_code == 401
+
+
+def test_get_current_user_valid_session(raw_client, mock_user, db_session):
+    """User with valid active session can access endpoint."""
+    token = _pyjwt.encode(
+        {"user_id": mock_user.user_id, "tenant_id": mock_user.tenant_id,
+         "exp": datetime.now(timezone.utc) + timedelta(minutes=30)},
+        _TEST_SECRET, algorithm=_TEST_ALGO,
+    )
+    db_session.add(models.Session(
+        user_id=mock_user.user_id,
+        tenant_id=mock_user.tenant_id,
+        token=token,
+        expires_at=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=30),
+        status=models.SessionStatus.active,
+    ))
+    db_session.commit()
+    raw_client.cookies.set("access_token", token)
+    resp = raw_client.get(f"/sensors/?tenant_id={mock_user.tenant_id}")
+    assert resp.status_code == 200
+
+
+# ── sensor/main.py: async helper coverage ────────────────────────────────────
+
+import pytest_asyncio  # noqa: F401 — ensure pytest-asyncio is active
+
+
+@pytest.mark.asyncio
+async def test_check_billing_active_returns_true():
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"billing_active": True}
+    with patch("httpx.AsyncClient") as mock_client_cls:
+        mock_client_cls.return_value.__aenter__ = _AsyncMock(return_value=mock_client_cls.return_value)
+        mock_client_cls.return_value.__aexit__ = _AsyncMock(return_value=False)
+        mock_client_cls.return_value.get = _AsyncMock(return_value=mock_resp)
+        from main import check_billing_active
+        result = await check_billing_active(1)
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_check_billing_active_non_200():
+    mock_resp = MagicMock()
+    mock_resp.status_code = 404
+    with patch("httpx.AsyncClient") as mock_client_cls:
+        mock_client_cls.return_value.__aenter__ = _AsyncMock(return_value=mock_client_cls.return_value)
+        mock_client_cls.return_value.__aexit__ = _AsyncMock(return_value=False)
+        mock_client_cls.return_value.get = _AsyncMock(return_value=mock_resp)
+        from main import check_billing_active
+        result = await check_billing_active(1)
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_check_billing_active_request_error():
+    with patch("httpx.AsyncClient") as mock_client_cls:
+        mock_client_cls.return_value.__aenter__ = _AsyncMock(return_value=mock_client_cls.return_value)
+        mock_client_cls.return_value.__aexit__ = _AsyncMock(return_value=False)
+        mock_client_cls.return_value.get = _AsyncMock(side_effect=httpx.RequestError("fail"))
+        from main import check_billing_active
+        result = await check_billing_active(1)
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_notify_sensor_delta_request_error():
+    """notify_sensor_delta swallows RequestError (non-critical)."""
+    with patch("httpx.AsyncClient") as mock_client_cls:
+        mock_client_cls.return_value.__aenter__ = _AsyncMock(return_value=mock_client_cls.return_value)
+        mock_client_cls.return_value.__aexit__ = _AsyncMock(return_value=False)
+        mock_client_cls.return_value.patch = _AsyncMock(side_effect=httpx.RequestError("fail"))
+        from main import notify_sensor_delta
+        await notify_sensor_delta(1, delta=1)  # should not raise
+
+
+@pytest.mark.asyncio
+async def test_notify_message_increment_request_error():
+    with patch("httpx.AsyncClient") as mock_client_cls:
+        mock_client_cls.return_value.__aenter__ = _AsyncMock(return_value=mock_client_cls.return_value)
+        mock_client_cls.return_value.__aexit__ = _AsyncMock(return_value=False)
+        mock_client_cls.return_value.patch = _AsyncMock(side_effect=httpx.RequestError("fail"))
+        from main import notify_message_increment
+        await notify_message_increment(1, increment=100)  # should not raise
+
+
+@pytest.mark.asyncio
+async def test_sync_iot_devices_request_error(db_session, mock_user):
+    with patch("httpx.AsyncClient") as mock_client_cls:
+        mock_client_cls.return_value.__aenter__ = _AsyncMock(return_value=mock_client_cls.return_value)
+        mock_client_cls.return_value.__aexit__ = _AsyncMock(return_value=False)
+        mock_client_cls.return_value.patch = _AsyncMock(side_effect=httpx.RequestError("fail"))
+        from main import sync_iot_devices
+        await sync_iot_devices(mock_user.tenant_id, db_session)  # should not raise

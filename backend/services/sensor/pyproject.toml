@@ -32,6 +32,7 @@ dev = [
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-v --tb=short --cov=. --cov-report=term-missing --cov-fail-under=90"
+asyncio_mode = "auto"
 
 [tool.coverage.run]
 omit = ["tests/*", "db_config.py"]
