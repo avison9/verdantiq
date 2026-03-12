@@ -308,6 +308,9 @@ def test_sync_iot_devices_internal(client, mock_user):
     """Calling the internal sync endpoint exercises the raw SQL update path."""
     resp = client.patch(
         f"/internal/tenants/{mock_user.tenant_id}/iot-devices",
-        json={"devices": [{"sensor_id": 1, "name": "S1", "status": "active"}]},
+        json={
+            "tenant_id": mock_user.tenant_id,
+            "devices": [{"sensor_id": 1, "name": "S1", "status": "active"}],
+        },
     )
     assert resp.status_code == 200
