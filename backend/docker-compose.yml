@@ -45,6 +45,7 @@ services:
     env_file: ../.env
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-mypassword}@postgres:5432/${POSTGRES_DB:-verdantiq}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5173}
     ports:
       - "8001:8001"
     networks:
