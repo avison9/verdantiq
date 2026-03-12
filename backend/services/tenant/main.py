@@ -8,7 +8,7 @@ import models
 import schemas
 import crud
 from authenticate import decode_access_token
-from configs import get_db, Base, engine
+from configs import get_db, Base, engine, ALLOWED_ORIGINS
 
 
 @asynccontextmanager
@@ -21,7 +21,7 @@ app = FastAPI(title="VerdantIQ Tenant Service", version="1.0.0", lifespan=lifesp
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -54,6 +54,17 @@ async def get_current_user(request: Request, db: Session = Depends(get_db)):
 
 
 # ─── Public routes ────────────────────────────────────────────────────────────
+
+@app.get("/billings/", response_model=schemas.BillingResponse)
+async def get_billing(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    billing = crud.get_billing_by_tenant(db, current_user.tenant_id)
+    if not billing:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No billing record found")
+    return billing
+
 
 @app.post("/billings/", response_model=schemas.BillingResponse)
 async def create_billing(

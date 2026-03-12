@@ -9,7 +9,8 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql://postgres:postgres@postgres:5432/verdantiq"
     SECRET_KEY: str = "changeme-in-production-generate-with-secrets-token-hex-32"
     ALGORITHM: str = "HS256"
-    ALLOWED_ORIGINS: str = "http://localhost:5173"
+    ALLOWED_ORIGINS: str =  "http://localhost:5173,http://13.50.234.104:5173"
+
 
     model_config = SettingsConfigDict(
         env_file=".env",
