@@ -34,14 +34,35 @@ repos:
       - id: ruff-format
         files: ^backend/
 
-  # ── Python: mypy (type checking) ──────────────────────────────────────────
+  # ── Python: bandit (security scanning) ────────────────────────────────────
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.10
+    hooks:
+      - id: bandit
+        args: ["-r", ".", "-c", "pyproject.toml", "--quiet"]
+        types: [python]
+        files: ^backend/services/(auth|tenant|sensor)/(?!tests/).*\.py$
+
+  # ── Python: mypy (type checking) — microservices ──────────────────────────
   - repo: local
     hooks:
-      - id: mypy
-        name: mypy
-        entry: bash -c 'cd backend/fast-api && uv run mypy . --ignore-missing-imports'
+      - id: mypy-auth
+        name: mypy (auth)
+        entry: bash -c 'cd backend/services/auth && uv run mypy . --ignore-missing-imports'
         language: system
-        files: ^backend/fast-api/.*\.py$
+        files: ^backend/services/auth/.*\.py$
+        pass_filenames: false
+      - id: mypy-tenant
+        name: mypy (tenant)
+        entry: bash -c 'cd backend/services/tenant && uv run mypy . --ignore-missing-imports'
+        language: system
+        files: ^backend/services/tenant/.*\.py$
+        pass_filenames: false
+      - id: mypy-sensor
+        name: mypy (sensor)
+        entry: bash -c 'cd backend/services/sensor && uv run mypy . --ignore-missing-imports'
+        language: system
+        files: ^backend/services/sensor/.*\.py$
         pass_filenames: false
 
   # ── Secret scanning ────────────────────────────────────────────────────────
