@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql://postgres:postgres@postgres:5432/verdantiq"
     SECRET_KEY: str = "changeme-in-production-generate-with-secrets-token-hex-32"
     ALGORITHM: str = "HS256"
+    ALLOWED_ORIGINS: str = "http://localhost:5173"
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -22,6 +23,7 @@ settings = Settings()
 DATABASE_URL = settings.DATABASE_URL
 SECRET_KEY = settings.SECRET_KEY
 ALGORITHM = settings.ALGORITHM
+ALLOWED_ORIGINS = [o.strip() for o in settings.ALLOWED_ORIGINS.split(",")]
 
 
 def connect_with_retry(max_attempts: int = 5, delay: int = 5):
