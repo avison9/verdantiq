@@ -30,7 +30,10 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = "-v --tb=short --cov=. --cov-report=term-missing --cov-fail-under=90 --cov-omit=tests/*,db_config.py"
+addopts = "-v --tb=short --cov=. --cov-report=term-missing --cov-fail-under=90"
+
+[tool.coverage.run]
+omit = ["tests/*", "db_config.py"]
 
 [tool.ruff]
 line-length = 100
