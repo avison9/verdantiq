@@ -337,7 +337,7 @@ def test_decode_token_missing_fields():
 def test_decode_token_valid():
     from authenticate import decode_access_token
     token = _pyjwt.encode(
-        {"user_id": 1, "tenant_id": 1, "exp": datetime.now(timezone.utc) + timedelta(minutes=30)},
+        {"sub": "1", "tenant_id": "1", "exp": datetime.now(timezone.utc) + timedelta(minutes=30)},
         _TEST_SECRET, algorithm=_TEST_ALGO,
     )
     payload = decode_access_token(token)
@@ -420,7 +420,7 @@ def test_get_current_user_missing_claims(raw_client):
 def test_get_current_user_user_not_found(raw_client):
     """Valid token but user not in DB → 401."""
     token = _pyjwt.encode(
-        {"user_id": 999999, "tenant_id": 999999,
+        {"sub": "999999", "tenant_id": "999999",
          "exp": datetime.now(timezone.utc) + timedelta(minutes=30)},
         _TEST_SECRET, algorithm=_TEST_ALGO,
     )
@@ -432,7 +432,7 @@ def test_get_current_user_user_not_found(raw_client):
 def test_get_current_user_expired_session(raw_client, mock_user, db_session):
     """User exists but session is expired → 401."""
     token = _pyjwt.encode(
-        {"user_id": mock_user.user_id, "tenant_id": mock_user.tenant_id,
+        {"sub": str(mock_user.user_id), "tenant_id": str(mock_user.tenant_id),
          "exp": datetime.now(timezone.utc) + timedelta(minutes=30)},
         _TEST_SECRET, algorithm=_TEST_ALGO,
     )
@@ -452,7 +452,7 @@ def test_get_current_user_expired_session(raw_client, mock_user, db_session):
 def test_get_current_user_valid_session(raw_client, mock_user, db_session):
     """User with valid active session can access endpoint."""
     token = _pyjwt.encode(
-        {"user_id": mock_user.user_id, "tenant_id": mock_user.tenant_id,
+        {"sub": str(mock_user.user_id), "tenant_id": str(mock_user.tenant_id),
          "exp": datetime.now(timezone.utc) + timedelta(minutes=30)},
         _TEST_SECRET, algorithm=_TEST_ALGO,
     )
