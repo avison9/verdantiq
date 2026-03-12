@@ -2,8 +2,10 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "react-toastify";
 import { useForgotPasswordMutation } from "../../redux/apislices/authApiSlice";
+import usePageTitle from "../../hooks/usePageTitle";
 
 const ForgotPassword = () => {
+  usePageTitle("Reset password");
   const [forgotPassword, { isLoading }] = useForgotPasswordMutation();
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
