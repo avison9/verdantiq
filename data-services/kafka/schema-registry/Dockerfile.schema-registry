@@ -21,6 +21,6 @@ ENV SCHEMA_REGISTRY_SCHEMA_COMPATIBILITY=BACKWARD
 
 COPY data-services/kafka/schema-registry/entrypoint.sh /entrypoint.sh
 
-
+RUN chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]

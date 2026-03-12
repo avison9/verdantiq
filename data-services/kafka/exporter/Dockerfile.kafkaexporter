@@ -7,4 +7,6 @@ FROM danielqsj/kafka-exporter
 
 COPY data-services/kafka/exporter/kafka-export-entrypoint.sh /kafka-export-entrypoint.sh
 
+RUN chmod +x /kafka-export-entrypoint.sh
+
 ENTRYPOINT ["/kafka-export-entrypoint.sh"]
