@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -7,9 +8,16 @@ import models
 import schemas
 import crud
 from authenticate import decode_access_token
-from configs import get_db
+from configs import get_db, Base, engine
 
-app = FastAPI(title="VerdantIQ Tenant Service", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    Base.metadata.create_all(bind=engine)
+    yield
+
+
+app = FastAPI(title="VerdantIQ Tenant Service", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

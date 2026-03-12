@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, status, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -9,9 +10,16 @@ import models
 import schemas
 import crud
 from authenticate import decode_access_token
-from configs import get_db, settings
+from configs import get_db, settings, Base, engine
 
-app = FastAPI(title="VerdantIQ Sensor Service", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    Base.metadata.create_all(bind=engine)
+    yield
+
+
+app = FastAPI(title="VerdantIQ Sensor Service", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -94,7 +102,7 @@ async def sync_iot_devices(tenant_id: int, db: Session) -> None:
         async with httpx.AsyncClient(timeout=5.0) as client:
             await client.patch(
                 f"{settings.TENANT_SERVICE_URL}/internal/tenants/{tenant_id}/iot-devices",
-                json={"devices": devices},
+                json={"tenant_id": tenant_id, "devices": devices},
             )
     except httpx.RequestError:
         pass
