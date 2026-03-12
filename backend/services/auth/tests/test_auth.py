@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import text
 
 
@@ -128,7 +128,7 @@ def test_session_expiry_enforced(client, user_data, login_data, db_session):
     # Manually push all active sessions into the past
     db_session.execute(
         text("UPDATE sessions SET expires_at = :exp WHERE status = 'active'"),
-        {"exp": datetime.utcnow() - timedelta(minutes=1)},
+        {"exp": datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=1)},
     )
     db_session.commit()
 
@@ -206,7 +206,7 @@ def test_reset_password_token_expires_after_15min(client, user_data, db_session)
     # Wind the expiry back into the past
     db_session.execute(
         text("UPDATE password_reset_tokens SET expires_at = :exp WHERE token = :tok"),
-        {"exp": datetime.utcnow() - timedelta(minutes=1), "tok": token},
+        {"exp": datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=1), "tok": token},
     )
     db_session.commit()
 
@@ -259,3 +259,167 @@ def test_assign_role_requires_admin(client, user_data):
     resp = client.post(f"/users/{admin_id}/roles", json={"role_name": "Admin"})
     assert resp.status_code == 403
     assert "Admin role required" in resp.json()["detail"]
+
+
+# ── Coverage additions ─────────────────────────────────────────────────────────
+
+import jwt as _pyjwt
+import pytest
+from unittest.mock import patch, MagicMock
+
+_TEST_SECRET = "test-secret-for-ci-only-min-32-bytes!"
+_TEST_ALGO = "HS256"
+
+
+# ── authenticate.py coverage ──────────────────────────────────────────────────
+
+def test_decode_access_token_invalid_jwt(client):
+    """Invalid JWT signature → 401."""
+    client.cookies.set("access_token", "this.is.garbage")
+    assert client.get("/users/me").status_code == 401
+
+
+def test_decode_access_token_missing_claims(client):
+    """JWT missing sub/tenant_id → 401."""
+    token = _pyjwt.encode({"foo": "bar"}, _TEST_SECRET, algorithm=_TEST_ALGO)
+    client.cookies.set("access_token", token)
+    assert client.get("/users/me").status_code == 401
+
+
+# ── configs.py coverage ───────────────────────────────────────────────────────
+
+def test_get_db_yields_and_closes():
+    from configs import get_db
+    gen = get_db()
+    db = next(gen)
+    assert db is not None
+    try:
+        next(gen)
+    except StopIteration:
+        pass
+
+
+def test_connect_with_retry_raises_after_max_attempts():
+    import configs
+    from sqlalchemy.exc import OperationalError
+    mock_engine = MagicMock()
+    mock_engine.connect.side_effect = OperationalError("fail", {}, Exception("fail"))
+    with patch("configs.create_engine", return_value=mock_engine), \
+         patch("configs.time.sleep"):
+        with pytest.raises(Exception, match="Failed to connect"):
+            configs.connect_with_retry(max_attempts=2, delay=0)
+
+
+def test_connect_with_retry_succeeds_after_transient_error():
+    import configs
+    from sqlalchemy.exc import OperationalError
+    mock_engine = MagicMock()
+    call_count = [0]
+    def flaky_connect():
+        call_count[0] += 1
+        if call_count[0] == 1:
+            raise OperationalError("fail", {}, Exception("fail"))
+    mock_engine.connect.side_effect = flaky_connect
+    with patch("configs.create_engine", return_value=mock_engine), \
+         patch("configs.time.sleep"):
+        result = configs.connect_with_retry(max_attempts=3, delay=0)
+    assert result is mock_engine
+
+
+# ── crud.py coverage ──────────────────────────────────────────────────────────
+
+def test_register_duplicate_tenant_name(client, user_data):
+    """Two registrations with same tenant_name → 400 Tenant name already exists."""
+    client.post("/register", json=user_data)
+    duplicate = {**user_data, "email": "other@greenfield.com"}
+    resp = client.post("/register", json=duplicate)
+    assert resp.status_code == 400
+    assert "Tenant name already exists" in resp.json()["detail"]
+
+
+def test_register_invalid_tenant_id_returns_400(client, user_data):
+    """Joining a non-existent tenant_id → 400."""
+    payload = {
+        "email": user_data["email"],
+        "password": user_data["password"],
+        "tenant_id": 999999,
+        "user_profile": {"role": "manager"},
+    }
+    resp = client.post("/register", json=payload)
+    assert resp.status_code == 400
+    assert "Invalid tenant_id" in resp.json()["detail"]
+
+
+def test_register_no_tenant_returns_400(client, user_data):
+    """Registration without tenant_id or tenant_name → 400."""
+    payload = {"email": user_data["email"], "password": user_data["password"]}
+    resp = client.post("/register", json=payload)
+    assert resp.status_code == 400
+    assert "Either tenant_id or tenant_name" in resp.json()["detail"]
+
+
+def test_update_me_email_and_password(client, user_data, login_data):
+    """Updating email, password, and last_name exercises those crud branches."""
+    client.post("/register", json=user_data)
+    client.post("/login", json=login_data)
+    resp = client.put("/users/me", json={
+        "email": "updated@greenfield.com",
+        "password": "newpass999",
+        "last_name": "Smith",
+    })
+    assert resp.status_code == 200
+
+
+def test_update_me_tenant_profile(client, user_data, login_data):
+    """Updating tenant_profile creates/updates the TenantProfile row."""
+    client.post("/register", json=user_data)
+    client.post("/login", json=login_data)
+    resp = client.put("/users/me", json={"tenant_profile": {"country": "Kenya", "farm_size": 25.0}})
+    assert resp.status_code == 200
+
+
+def test_update_me_creates_user_profile_if_missing(client, user_data):
+    """If user has no UserProfile, updating user_profile creates one."""
+    no_profile = {
+        "email": user_data["email"],
+        "password": user_data["password"],
+        "tenant_name": user_data["tenant_name"],
+    }
+    client.post("/register", json=no_profile)
+    client.post("/login", json={"email": user_data["email"], "password": user_data["password"]})
+    resp = client.put("/users/me", json={"user_profile": {"role": "agronomist"}})
+    assert resp.status_code == 200
+
+
+# ── main.py coverage ─────────────────────────────────────────────────────────
+
+def test_get_current_user_nonexistent_user_returns_401(client):
+    """Valid JWT but user not in DB → 401."""
+    token = _pyjwt.encode(
+        {"sub": "999999", "tenant_id": "999999",
+         "exp": datetime.now(timezone.utc) + timedelta(minutes=30)},
+        _TEST_SECRET, algorithm=_TEST_ALGO,
+    )
+    client.cookies.set("access_token", token)
+    assert client.get("/users/me").status_code == 401
+
+
+def test_login_inactive_user_returns_403(client, user_data, login_data, db_session):
+    """Login attempt with an inactive user → 403."""
+    client.post("/register", json=user_data)
+    db_session.execute(
+        text("UPDATE users SET status = 'inactive' WHERE email = :e"),
+        {"e": user_data["email"]},
+    )
+    db_session.commit()
+    resp = client.post("/login", json=login_data)
+    assert resp.status_code == 403
+
+
+def test_assign_role_target_not_in_tenant_returns_404(client, user_data):
+    """Admin assigning role to non-existent user_id in their tenant → 404."""
+    client.post("/register", json=user_data)
+    client.post("/login", json={"email": user_data["email"], "password": user_data["password"]})
+    resp = client.post("/users/999999/roles", json={"role_name": "Viewer"})
+    assert resp.status_code == 404
+    assert "User not found" in resp.json()["detail"]
