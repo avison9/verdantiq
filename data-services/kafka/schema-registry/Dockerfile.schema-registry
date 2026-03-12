@@ -19,8 +19,6 @@ ENV SCHEMA_REGISTRY_SCHEMA_COMPATIBILITY=BACKWARD
 # # have to download the file for now excluding it, will download later
 # ENV KAFKA_OPTS: "-javaagent:/usr/share/jmx_exporter/jmx_prometheus_javaagent-0.17.0.jar=9101:/usr/share/jmx_exporter/schema-registry.yml"
 
-COPY data-services/kafka/schema-registry/entrypoint.sh /entrypoint.sh
-
-RUN chmod +x /entrypoint.sh
+COPY --chmod=755 data-services/kafka/schema-registry/entrypoint.sh /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]

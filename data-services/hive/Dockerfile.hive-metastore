@@ -19,14 +19,13 @@ ENV PATH=$JAVA_HOME/bin:$PATH
 # Ensure hive can find Java
 RUN echo "JAVA_HOME=$JAVA_HOME" >> /etc/environment
 
-# Copy scripts as root so chmod can be applied, then drop to hive user
-COPY hive/scripts/start-metastore.sh /opt/hive/bin/start-metastore.sh
+# Switch to the 'hive' user to maintain security
+USER hive
+
+# Copy over any necessary files from your local machine to the container
+COPY --chmod=755 hive/scripts/start-metastore.sh /opt/hive/bin/start-metastore.sh
 COPY hive/hive-minio.xml /opt/hive/conf/hive-site.xml
 COPY libs/jdbc/postgresql-jdbc.jar /opt/hive/lib/postgresql-jdbc.jar
-
-RUN chmod +x /opt/hive/bin/start-metastore.sh
-
-USER hive
 
 # Set the working directory
 WORKDIR /opt/hive
