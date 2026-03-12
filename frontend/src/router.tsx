@@ -8,9 +8,6 @@ import Verify from "./pages/authentication/Verify";
 import ResetPassword from "./pages/authentication/ResetPassword";
 import PageNotFound from "./components/PageNotFound";
 
-// const Signup = lazy(() => import("./pages/auth/Signup"));
-// const Signin = lazy(() => import("./pages/auth/Signin"));
-
 export const router = createBrowserRouter([
   {
     path: "/",
@@ -23,23 +20,14 @@ export const router = createBrowserRouter([
       },
     ],
   },
+  // Protected routes — uncomment and add children when dashboard pages are ready
   // {
-  //   path: "",
+  //   path: "/dashboard",
   //   element: <PrivateRoute />,
   //   children: [
   //     {
   //       path: "",
   //       element: <Dashboard />,
-  //       children: [
-
-  //         {
-  //           path: "",
-  //           element: <AdminRoute />,
-  //           children: [
-
-  //           ],
-  //         },
-  //       ],
   //     },
   //   ],
   // },

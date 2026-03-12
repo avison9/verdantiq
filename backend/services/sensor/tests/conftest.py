@@ -137,3 +137,68 @@ def sensor_payload(mock_user):
         "sensor_type": "soil_moisture",
         "location": "Field A",
     }
+
+
+# ── Role-based fixtures ────────────────────────────────────────────────────────
+
+@pytest.fixture
+def admin_user(db_session):
+    """A user with 'Admin' role in their own tenant."""
+    tenant_id = _insert_tenant(db_session, "AdminTenant")
+    user = models.User(
+        tenant_id=tenant_id,
+        email="admin@admintenant.com",
+        password_hash="hashed",
+        status="active",
+    )
+    db_session.add(user)
+    db_session.flush()
+
+    role = models.Role(tenant_id=tenant_id, role_name="Admin")
+    db_session.add(role)
+    db_session.flush()
+    db_session.add(models.UserRole(user_id=user.user_id, role_id=role.role_id))
+    db_session.commit()
+    db_session.refresh(user)
+    return user
+
+
+@pytest.fixture
+def viewer_user(db_session, admin_user):
+    """A second user in the same tenant as admin_user, with 'Viewer' role."""
+    user = models.User(
+        tenant_id=admin_user.tenant_id,
+        email="viewer@admintenant.com",
+        password_hash="hashed",
+        status="active",
+    )
+    db_session.add(user)
+    db_session.flush()
+
+    role = models.Role(tenant_id=admin_user.tenant_id, role_name="Viewer")
+    db_session.add(role)
+    db_session.flush()
+    db_session.add(models.UserRole(user_id=user.user_id, role_id=role.role_id))
+    db_session.commit()
+    db_session.refresh(user)
+    return user
+
+
+@pytest.fixture
+def admin_client(admin_user):
+    async def override_user():
+        return admin_user
+
+    app.dependency_overrides[_get_current_user] = override_user
+    yield TestClient(app)
+    del app.dependency_overrides[_get_current_user]
+
+
+@pytest.fixture
+def viewer_client(viewer_user):
+    async def override_user():
+        return viewer_user
+
+    app.dependency_overrides[_get_current_user] = override_user
+    yield TestClient(app)
+    del app.dependency_overrides[_get_current_user]

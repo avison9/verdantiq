@@ -105,3 +105,21 @@ class LoginRequest(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
+class ForgotPasswordResponse(BaseModel):
+    message: str
+    reset_token: Optional[str] = None  # populated in dev; replace with email in prod
+
+
+class RoleAssignRequest(BaseModel):
+    role_name: str
