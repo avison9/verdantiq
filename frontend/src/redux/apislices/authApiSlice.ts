@@ -52,6 +52,37 @@ export interface ResetPasswordRequest {
   new_password: string;
 }
 
+export interface UserProfile {
+  role?: string;
+  position?: string;
+  country?: string;
+  address?: string;
+}
+
+export interface MeResponse {
+  user_id: number;
+  email: string;
+  first_name: string;
+  last_name: string;
+  tenant_id: number;
+  status: string;
+  profile?: UserProfile;
+}
+
+export interface UpdateMeRequest {
+  email?: string;
+  password?: string;
+  first_name?: string;
+  last_name?: string;
+  user_profile?: UserProfile;
+  tenant_profile?: {
+    country?: string;
+    address?: string;
+    farm_size?: number;
+    crop_types?: string[];
+  };
+}
+
 export interface MessageResponse {
   message: string;
 }
@@ -94,6 +125,18 @@ export const authApiSlice = baseApiSlice.injectEndpoints({
         body: data,
       }),
     }),
+    getMe: builder.query<MeResponse, void>({
+      query: () => APIendPoints.me,
+      providesTags: ["User"],
+    }),
+    updateMe: builder.mutation<MeResponse, UpdateMeRequest>({
+      query: (data) => ({
+        url: APIendPoints.me,
+        method: "PUT",
+        body: data,
+      }),
+      invalidatesTags: ["User"],
+    }),
   }),
 });
 
@@ -103,4 +146,6 @@ export const {
   useLogoutMutation,
   useForgotPasswordMutation,
   useResetPasswordMutation,
+  useGetMeQuery,
+  useUpdateMeMutation,
 } = authApiSlice;

@@ -60,3 +60,13 @@ body {
     --text-color: #ffffff; /* Light text color */
   }
 }
+
+/* Ensure form controls always have visible text regardless of theme.
+   Our auth/profile pages use white card backgrounds, so inputs must
+   have dark text — they do not inherit the theme text color correctly. */
+input,
+textarea,
+select {
+  color: #111827; /* gray-900 */
+  background-color: #ffffff;
+}

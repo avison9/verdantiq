@@ -7,6 +7,9 @@ import ForgotPassword from "./pages/authentication/ForgotPassword";
 import Verify from "./pages/authentication/Verify";
 import ResetPassword from "./pages/authentication/ResetPassword";
 import PageNotFound from "./components/PageNotFound";
+import PrivateRoute from "./components/PrivateRoute";
+import UserProfile from "./pages/profile/UserProfile";
+import TenantProfile from "./pages/profile/TenantProfile";
 
 export const router = createBrowserRouter([
   {
@@ -14,53 +17,33 @@ export const router = createBrowserRouter([
     element: <App />,
     children: [
       {
-        path: "/",
         index: true,
         element: <LandingPage />,
       },
     ],
   },
-  // Protected routes — uncomment and add children when dashboard pages are ready
-  // {
-  //   path: "/dashboard",
-  //   element: <PrivateRoute />,
-  //   children: [
-  //     {
-  //       path: "",
-  //       element: <Dashboard />,
-  //     },
-  //   ],
-  // },
+
+  // ── Protected routes ──────────────────────────────────────────────────────
   {
-    path: "/login",
+    element: <PrivateRoute />,
     children: [
       {
-        path: "/login",
-        index: true,
-        element: <Login />,
+        path: "/profile/user",
+        element: <UserProfile />,
+      },
+      {
+        path: "/profile/tenant",
+        element: <TenantProfile />,
       },
     ],
   },
 
-  {
-    path: "/register",
-    element: <Register />,
-  },
-  {
-    path: "/forgot-password",
-    element: <ForgotPassword />,
-  },
-  {
-    path: "/verify",
-    element: <Verify />,
-  },
-  {
-    path: "/reset-password",
-    element: <ResetPassword />,
-  },
+  // ── Auth routes ───────────────────────────────────────────────────────────
+  { path: "/login",           element: <Login /> },
+  { path: "/register",        element: <Register /> },
+  { path: "/forgot-password", element: <ForgotPassword /> },
+  { path: "/verify",          element: <Verify /> },
+  { path: "/reset-password",  element: <ResetPassword /> },
 
-  {
-    path: "*",
-    element: <PageNotFound />,
-  },
+  { path: "*", element: <PageNotFound /> },
 ]);
