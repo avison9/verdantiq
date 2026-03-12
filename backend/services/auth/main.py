@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, status, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,9 +8,16 @@ import models
 import schemas
 import crud
 from authenticate import verify_password, create_session, expire_session, decode_access_token
-from configs import get_db
+from configs import get_db, Base, engine
 
-app = FastAPI(title="VerdantIQ Auth Service", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    Base.metadata.create_all(bind=engine)
+    yield
+
+
+app = FastAPI(title="VerdantIQ Auth Service", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
