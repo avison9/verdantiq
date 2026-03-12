@@ -1,8 +1,10 @@
-import { useSelector } from "react-redux";
-import { Link } from "react-router-dom";
+import { useSelector, useDispatch } from "react-redux";
+import { Link, useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
 import type { RootState } from "../redux/store";
 import usePageTitle from "../hooks/usePageTitle";
-import { useGetMeQuery } from "../redux/apislices/authApiSlice";
+import { useGetMeQuery, useLogoutMutation } from "../redux/apislices/authApiSlice";
+import { logout as logoutAction } from "../redux/slices/authSlice";
 import { useGetSensorsQuery, useGetBillingQuery } from "../redux/apislices/userDashboardApiSlice";
 
 const STATUS_STYLES: Record<string, string> = {
@@ -40,6 +42,20 @@ function greeting() {
 const Dashboard = () => {
   usePageTitle("Dashboard");
   const userInfo = useSelector((state: RootState) => state.auth.userInfo);
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const [logoutApi] = useLogoutMutation();
+
+  const handleLogout = async () => {
+    try {
+      await logoutApi().unwrap();
+    } catch {
+      // clear local state regardless
+    }
+    dispatch(logoutAction());
+    navigate("/login");
+    toast.success("Signed out successfully");
+  };
 
   const { data: me, isLoading: meLoading } = useGetMeQuery();
   const { data: sensors = [], isLoading: sensorsLoading } = useGetSensorsQuery(
@@ -82,6 +98,12 @@ const Dashboard = () => {
           >
             Organisation
           </Link>
+          <button
+            onClick={handleLogout}
+            className="text-sm text-gray-500 hover:text-red-500 transition-colors font-medium"
+          >
+            Sign out
+          </button>
         </div>
       </div>
 

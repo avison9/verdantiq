@@ -1,6 +1,10 @@
 import { createBrowserRouter } from "react-router-dom";
-import App from "./App";
+import MarketingLayout from "./components/MarketingLayout";
 import LandingPage from "./pages/LandingPage";
+import AboutUs from "./pages/marketing/AboutUs";
+import MissionVision from "./pages/marketing/MissionVision";
+import ContactUs from "./pages/marketing/ContactUs";
+import Pricing from "./pages/marketing/Pricing";
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/authentication/Login";
 import Register from "./pages/authentication/Register";
@@ -13,19 +17,19 @@ import UserProfile from "./pages/profile/UserProfile";
 import TenantProfile from "./pages/profile/TenantProfile";
 
 export const router = createBrowserRouter([
-  // ── Public shell (Header + Footer) ────────────────────────────────────────
+  // ── Marketing shell (transparent nav + rich footer) ────────────────────────
   {
-    path: "/",
-    element: <App />,
+    element: <MarketingLayout />,
     children: [
-      {
-        index: true,
-        element: <LandingPage />,
-      },
+      { path: "/",        element: <LandingPage /> },
+      { path: "/about",   element: <AboutUs /> },
+      { path: "/mission", element: <MissionVision /> },
+      { path: "/contact", element: <ContactUs /> },
+      { path: "/pricing", element: <Pricing /> },
     ],
   },
 
-  // ── Protected routes (no shell — dashboard has its own top bar) ───────────
+  // ── Protected routes (dashboard has its own top bar) ───────────────────────
   {
     element: <PrivateRoute />,
     children: [
