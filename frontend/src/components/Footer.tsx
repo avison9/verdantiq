@@ -1,5 +1,2 @@
-const Footer = () => {
-  return <div>Footer</div>;
-};
-
-export default Footer;
+// App shell footer — re-exports the shared marketing footer
+export { default } from "./MarketingFooter";
