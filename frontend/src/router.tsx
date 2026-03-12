@@ -1,6 +1,7 @@
-import { createBrowserRouter } from "react-router-dom";
+import { createBrowserRouter, Navigate } from "react-router-dom";
 import App from "./App";
 import LandingPage from "./pages/LandingPage";
+import Dashboard from "./pages/Dashboard";
 import Login from "./pages/authentication/Login";
 import Register from "./pages/authentication/Register";
 import ForgotPassword from "./pages/authentication/ForgotPassword";
@@ -12,6 +13,7 @@ import UserProfile from "./pages/profile/UserProfile";
 import TenantProfile from "./pages/profile/TenantProfile";
 
 export const router = createBrowserRouter([
+  // ── Public shell (Header + Footer) ────────────────────────────────────────
   {
     path: "/",
     element: <App />,
@@ -23,18 +25,13 @@ export const router = createBrowserRouter([
     ],
   },
 
-  // ── Protected routes ──────────────────────────────────────────────────────
+  // ── Protected routes (no shell — dashboard has its own top bar) ───────────
   {
     element: <PrivateRoute />,
     children: [
-      {
-        path: "/profile/user",
-        element: <UserProfile />,
-      },
-      {
-        path: "/profile/tenant",
-        element: <TenantProfile />,
-      },
+      { path: "/dashboard",      element: <Dashboard /> },
+      { path: "/profile/user",   element: <UserProfile /> },
+      { path: "/profile/tenant", element: <TenantProfile /> },
     ],
   },
 

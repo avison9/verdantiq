@@ -3,10 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import { useGetMeQuery, useUpdateMeMutation } from "../../redux/apislices/authApiSlice";
 import CountrySelect from "../../components/CountrySelect";
+import usePageTitle from "../../hooks/usePageTitle";
 
 const ROLES = ["manager", "admin", "field_worker", "agronomist", "viewer"];
 
 const UserProfile = () => {
+  usePageTitle("My profile");
   const navigate = useNavigate();
   const { data: me, isLoading: isLoadingMe } = useGetMeQuery();
   const [updateMe, { isLoading: isSaving }] = useUpdateMeMutation();

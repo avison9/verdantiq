@@ -2,8 +2,10 @@ import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "react-toastify";
 import { useResetPasswordMutation } from "../../redux/apislices/authApiSlice";
+import usePageTitle from "../../hooks/usePageTitle";
 
 const ResetPassword = () => {
+  usePageTitle("Set new password");
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token") ?? "";

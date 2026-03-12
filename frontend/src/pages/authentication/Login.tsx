@@ -4,8 +4,10 @@ import { useDispatch } from "react-redux";
 import { toast } from "react-toastify";
 import { useLoginMutation } from "../../redux/apislices/authApiSlice";
 import { setCredentials } from "../../redux/slices/authSlice";
+import usePageTitle from "../../hooks/usePageTitle";
 
 const Login = () => {
+  usePageTitle("Sign in");
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const [login, { isLoading }] = useLoginMutation();
@@ -21,7 +23,7 @@ const Login = () => {
     try {
       const result = await login(form).unwrap();
       dispatch(setCredentials(result.access_token));
-      navigate("/");
+      navigate("/dashboard");
     } catch (err: unknown) {
       const error = err as { data?: { detail?: string } };
       toast.error(error?.data?.detail ?? "Login failed. Please check your credentials.");

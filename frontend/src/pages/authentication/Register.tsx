@@ -3,10 +3,12 @@ import { Link, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import { useRegisterMutation } from "../../redux/apislices/authApiSlice";
 import CountrySelect from "../../components/CountrySelect";
+import usePageTitle from "../../hooks/usePageTitle";
 
 type TenantMode = "new" | "existing";
 
 const Register = () => {
+  usePageTitle("Create account");
   const navigate = useNavigate();
   const [register, { isLoading }] = useRegisterMutation();
 
