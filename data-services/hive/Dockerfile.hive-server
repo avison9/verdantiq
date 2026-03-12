@@ -19,13 +19,14 @@ ENV PATH=$JAVA_HOME/bin:$PATH
 # Java Path for Hive
 RUN echo "JAVA_HOME=$JAVA_HOME" >> /etc/environment
 
-# Switch to the 'hive' user after installation
-USER hive
-
-# Copy over any necessary files from your local machine to the container
+# Copy scripts as root so chmod can be applied, then drop to hive user
 COPY hive/scripts/start-hiveserver2.sh /opt/hive/bin/start-hiveserver2.sh
 COPY hive/hive-minio.xml /opt/hive/conf/hive-site.xml
 COPY libs/jdbc/postgresql-jdbc.jar /opt/hive/lib/postgresql-jdbc.jar
+
+RUN chmod +x /opt/hive/bin/start-hiveserver2.sh
+
+USER hive
 
 
 
