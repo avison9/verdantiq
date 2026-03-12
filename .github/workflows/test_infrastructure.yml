@@ -194,12 +194,11 @@ jobs:
 
       - name: Install infra test dependencies
         working-directory: backend/test-infra
-        run: uv sync 2>/dev/null || pip install -r requirements.txt
+        run: uv sync || pip install -r requirements.txt
 
       - name: Run infrastructure tests
         working-directory: backend/test-infra
-        run: uv run pytest tests/test_infrastructure.py -v 2>/dev/null \
-             || pytest tests/test_infrastructure.py -v
+        run: uv run pytest tests/test_infrastructure.py -v
 
       - name: Tear down
         if: always()
