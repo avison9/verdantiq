@@ -52,3 +52,16 @@ class Session(Base):
     last_active = Column(DateTime, server_default=func.now(), nullable=False)
     expires_at = Column(DateTime, nullable=False)
     status = Column(Enum(SessionStatus), nullable=False, default=SessionStatus.active)
+
+
+class Role(Base):
+    __tablename__ = "roles"
+    role_id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, nullable=False, index=True)
+    role_name = Column(String(50), nullable=False)
+
+
+class UserRole(Base):
+    __tablename__ = "user_roles"
+    user_id = Column(Integer, ForeignKey("users.user_id"), primary_key=True)
+    role_id = Column(Integer, ForeignKey("roles.role_id"), primary_key=True)

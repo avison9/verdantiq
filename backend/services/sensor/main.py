@@ -1,9 +1,10 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Request
+from fastapi import FastAPI, Depends, HTTPException, status, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import List
 import httpx
+import trino.exceptions
 import models
 import schemas
 import crud
@@ -126,12 +127,14 @@ async def onboard_sensor(
 @app.get("/sensors/", response_model=List[schemas.SensorResponse])
 async def list_sensors(
     tenant_id: int,
+    skip: int = Query(default=0, ge=0, description="Number of records to skip"),
+    limit: int = Query(default=10, ge=1, le=100, description="Maximum records to return"),
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     if current_user.tenant_id != tenant_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized for this tenant")
-    return crud.get_sensors_by_tenant(db, tenant_id)
+    return crud.get_sensors_by_tenant(db, tenant_id, skip=skip, limit=limit)
 
 
 @app.delete("/sensors/{sensor_id}", response_model=schemas.SensorResponse)
@@ -143,7 +146,22 @@ async def delete_sensor(
     sensor = crud.get_sensor(db, sensor_id)
     if not sensor:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sensor not found")
-    if sensor.user_id != current_user.user_id or sensor.tenant_id != current_user.tenant_id:
+
+    # Cross-tenant check: sensor must belong to the current user's tenant
+    if sensor.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+
+    user_role = crud.get_user_role(db, current_user.user_id, current_user.tenant_id)
+
+    # Viewers are never allowed to delete
+    if user_role == "viewer":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Viewers cannot delete sensors",
+        )
+
+    # Non-admins can only delete their own sensors
+    if user_role != "admin" and sensor.user_id != current_user.user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
 
     tenant_id = sensor.tenant_id
@@ -165,7 +183,13 @@ async def get_sensor_data(
     if sensor.user_id != current_user.user_id or sensor.tenant_id != current_user.tenant_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
 
-    data = crud.get_sensor_data(sensor_id, sensor.tenant_id)
+    try:
+        data = crud.get_sensor_data(sensor_id, sensor.tenant_id)
+    except trino.exceptions.DatabaseError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Data service temporarily unavailable",
+        )
     return schemas.SensorDataResponse(sensor_id=sensor_id, tenant_id=sensor.tenant_id, data=data)
 
 

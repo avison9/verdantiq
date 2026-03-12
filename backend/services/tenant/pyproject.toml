@@ -22,13 +22,29 @@ dev = [
     "httpx>=0.28.0",
     "ruff>=0.9.0",
     "mypy>=1.13.0",
+    "bandit>=1.7.10",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = "-v --tb=short"
+addopts = "-v --tb=short --cov=. --cov-report=term-missing --cov-fail-under=90 --cov-omit=tests/*,db_config.py"
 
 [tool.ruff]
 line-length = 100
 target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "S", "B"]
+ignore = ["S101", "S105", "S106"]
+
+[tool.mypy]
+python_version = "3.13"
+ignore_missing_imports = true
+disallow_untyped_defs = true
+warn_return_any = true
+warn_unused_ignores = true
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+skips = ["B101", "B601"]

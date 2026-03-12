@@ -1,6 +1,8 @@
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from typing import Optional, Dict
+from datetime import datetime, timedelta, timezone
+import secrets
 import models
 import schemas
 from authenticate import get_password_hash
@@ -122,4 +124,82 @@ def log_activity(db: Session, user_id: int, tenant_id: int, action: str, details
     db.add(models.UserActivityLog(
         user_id=user_id, tenant_id=tenant_id, action=action, details=details
     ))
+    db.commit()
+
+
+def get_user_role(db: Session, user_id: int, tenant_id: int) -> Optional[str]:
+    """Returns the lowercase role name for user in the tenant, or None."""
+    role = (
+        db.query(models.Role)
+        .join(models.UserRole, models.Role.role_id == models.UserRole.role_id)
+        .filter(
+            models.UserRole.user_id == user_id,
+            models.Role.tenant_id == tenant_id,
+        )
+        .first()
+    )
+    return role.role_name.lower() if role else None
+
+
+def assign_role(db: Session, user_id: int, tenant_id: int, role_name: str) -> None:
+    """Assign (replace) the role for a user within a tenant."""
+    role = db.query(models.Role).filter(
+        models.Role.tenant_id == tenant_id,
+        models.Role.role_name.ilike(role_name),
+    ).first()
+    if not role:
+        role = models.Role(tenant_id=tenant_id, role_name=role_name.title())
+        db.add(role)
+        db.flush()
+
+    # Remove existing role assignments for this user in this tenant
+    existing_role_ids = db.query(models.Role.role_id).filter(
+        models.Role.tenant_id == tenant_id
+    ).subquery()
+    db.query(models.UserRole).filter(
+        models.UserRole.user_id == user_id,
+        models.UserRole.role_id.in_(existing_role_ids),
+    ).delete(synchronize_session="fetch")
+
+    db.add(models.UserRole(user_id=user_id, role_id=role.role_id))
+    db.commit()
+
+
+def create_password_reset_token(db: Session, user_id: int) -> models.PasswordResetToken:
+    """Invalidate prior unused tokens and create a fresh 15-minute reset token."""
+    db.query(models.PasswordResetToken).filter(
+        models.PasswordResetToken.user_id == user_id,
+        models.PasswordResetToken.used == False,  # noqa: E712
+    ).update({"used": True})
+    db.commit()
+
+    token = secrets.token_hex(32)
+    expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=15)
+    db_token = models.PasswordResetToken(
+        user_id=user_id, token=token, expires_at=expires_at
+    )
+    db.add(db_token)
+    db.commit()
+    db.refresh(db_token)
+    return db_token
+
+
+def get_valid_reset_token(db: Session, token: str) -> Optional[models.PasswordResetToken]:
+    """Return token row if it exists, is unused, and has not expired."""
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    return db.query(models.PasswordResetToken).filter(
+        models.PasswordResetToken.token == token,
+        models.PasswordResetToken.used == False,  # noqa: E712
+        models.PasswordResetToken.expires_at > now,
+    ).first()
+
+
+def use_reset_token(db: Session, token_id: int, user_id: int, new_password: str) -> None:
+    """Mark token used and update the user's password hash atomically."""
+    db.query(models.PasswordResetToken).filter(
+        models.PasswordResetToken.token_id == token_id
+    ).update({"used": True})
+    db.query(models.User).filter(
+        models.User.user_id == user_id
+    ).update({"password_hash": get_password_hash(new_password)})
     db.commit()

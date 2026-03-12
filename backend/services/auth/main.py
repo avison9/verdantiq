@@ -137,6 +137,57 @@ async def update_user_me(
     return updated_user
 
 
+@app.post("/forgot-password", response_model=schemas.ForgotPasswordResponse)
+async def forgot_password(body: schemas.ForgotPasswordRequest, db: Session = Depends(get_db)):
+    user = crud.get_user_by_email(db, body.email)
+    if not user:
+        # Never reveal whether an email exists (security best practice)
+        return schemas.ForgotPasswordResponse(
+            message="If an account exists for this email, a password reset link has been sent."
+        )
+    reset_token = crud.create_password_reset_token(db, user.user_id)
+    # TODO (production): send reset_token.token via email instead of returning it
+    return schemas.ForgotPasswordResponse(
+        message="If an account exists for this email, a password reset link has been sent.",
+        reset_token=reset_token.token,
+    )
+
+
+@app.post("/reset-password")
+async def reset_password(body: schemas.ResetPasswordRequest, db: Session = Depends(get_db)):
+    token_obj = crud.get_valid_reset_token(db, body.token)
+    if not token_obj:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
+        )
+    crud.use_reset_token(db, token_obj.token_id, token_obj.user_id, body.new_password)
+    return {"message": "Password reset successfully"}
+
+
+@app.post("/users/{user_id}/roles")
+async def assign_user_role(
+    user_id: int,
+    role_data: schemas.RoleAssignRequest,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    current_role = crud.get_user_role(db, current_user.user_id, current_user.tenant_id)
+    if current_role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin role required to assign roles",
+        )
+    target = db.query(models.User).filter(
+        models.User.user_id == user_id,
+        models.User.tenant_id == current_user.tenant_id,
+    ).first()
+    if not target:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found in this tenant")
+    crud.assign_role(db, user_id, current_user.tenant_id, role_data.role_name)
+    return {"message": f"Role '{role_data.role_name}' assigned to user {user_id}"}
+
+
 @app.get("/health")
 async def health():
     return {"service": "auth", "status": "ok"}
