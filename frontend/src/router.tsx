@@ -7,7 +7,6 @@ import ForgotPassword from "./pages/authentication/ForgotPassword";
 import Verify from "./pages/authentication/Verify";
 import ResetPassword from "./pages/authentication/ResetPassword";
 import PageNotFound from "./components/PageNotFound";
-import PrivateRoute from "./components/PrivateRoute";
 
 export const router = createBrowserRouter([
   {
