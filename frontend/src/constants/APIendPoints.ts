@@ -1,4 +1,6 @@
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+// In dev (no VITE_API_BASE_URL set), use "" so Vite's dev proxy intercepts.
+// In production builds, set VITE_API_BASE_URL to the real backend URL.
+const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
 export const APIendPoints = {
   baseUrl: BASE_URL,
