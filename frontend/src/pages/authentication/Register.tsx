@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import { useRegisterMutation } from "../../redux/apislices/authApiSlice";
+import CountrySelect from "../../components/CountrySelect";
 
 type TenantMode = "new" | "existing";
 
@@ -18,6 +19,7 @@ const Register = () => {
     last_name: "",
     tenant_name: "",
     tenant_id: "",
+    country: "",
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -40,6 +42,7 @@ const Register = () => {
             first_name: form.first_name,
             last_name: form.last_name,
             tenant_name: form.tenant_name,
+            tenant_profile: form.country ? { country: form.country } : undefined,
           }
         : {
             email: form.email,
@@ -47,6 +50,7 @@ const Register = () => {
             first_name: form.first_name,
             last_name: form.last_name,
             tenant_id: Number(form.tenant_id),
+            user_profile: form.country ? { country: form.country } : undefined,
           };
 
     try {
@@ -180,6 +184,17 @@ const Register = () => {
                 />
               </div>
             )}
+
+            <div>
+              <label htmlFor="country" className="block text-sm font-medium text-gray-700 mb-1">
+                Country
+              </label>
+              <CountrySelect
+                id="country"
+                value={form.country}
+                onChange={(country) => setForm({ ...form, country })}
+              />
+            </div>
 
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
