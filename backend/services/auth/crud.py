@@ -93,7 +93,7 @@ def update_user(db: Session, user_id: int, tenant_id: int, user_update: schemas.
         user.last_name = update_data["last_name"]
 
     if "tenant_profile" in update_data and update_data["tenant_profile"]:
-        profile_data = update_data["tenant_profile"].model_dump(exclude_unset=True)
+        profile_data = update_data["tenant_profile"]
         tenant_profile = db.query(models.TenantProfile).filter(
             models.TenantProfile.tenant_id == user.tenant_id
         ).first()

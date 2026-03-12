@@ -1,8 +1,6 @@
-pyspark==3.5.0
-pytest
-requests
-psycopg2-binary
-confluent-kafka==2.10.0
-delta-spark
-docker
-minio
+pytest>=8.0.0
+requests>=2.32.0
+psycopg2-binary>=2.9.9
+confluent-kafka>=2.10.0
+minio>=7.2.0
+trino>=0.330.0

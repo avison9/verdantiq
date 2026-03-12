@@ -1,0 +1,17 @@
+[project]
+name = "verdantiq-infra-tests"
+version = "0.1.0"
+description = "VerdantIQ Infrastructure Integration Tests"
+requires-python = ">=3.12"
+dependencies = [
+    "pytest>=8.0.0",
+    "requests>=2.32.0",
+    "psycopg2-binary>=2.9.9",
+    "confluent-kafka>=2.10.0",
+    "minio>=7.2.0",
+    "trino>=0.330.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
