@@ -18,28 +18,26 @@ from configs import get_db, settings, Base, engine, ALLOWED_ORIGINS
 async def lifespan(app: FastAPI):
     # ── Pre-create_all migrations (must run before create_all so FK types match) ──
     with engine.connect() as conn:
-        # 1. Add pending and error to sensorstatus enum (needed before create_all)
+        # 1. Add pending/error to sensorstatus enum only if the type already exists
+        #    (fresh DBs let create_all build the full enum; existing DBs may need backfill)
         conn.execute(text("""
             DO $$
             BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM pg_enum
-                    WHERE enumlabel = 'pending'
-                      AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'sensorstatus')
-                ) THEN
-                    ALTER TYPE sensorstatus ADD VALUE 'pending';
-                END IF;
-            END $$;
-        """))
-        conn.execute(text("""
-            DO $$
-            BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM pg_enum
-                    WHERE enumlabel = 'error'
-                      AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'sensorstatus')
-                ) THEN
-                    ALTER TYPE sensorstatus ADD VALUE 'error';
+                IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'sensorstatus') THEN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_enum
+                        WHERE enumlabel = 'pending'
+                          AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'sensorstatus')
+                    ) THEN
+                        ALTER TYPE sensorstatus ADD VALUE 'pending';
+                    END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_enum
+                        WHERE enumlabel = 'error'
+                          AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'sensorstatus')
+                    ) THEN
+                        ALTER TYPE sensorstatus ADD VALUE 'error';
+                    END IF;
                 END IF;
             END $$;
         """))
@@ -82,6 +80,7 @@ async def lifespan(app: FastAPI):
         conn.commit()
 
     yield
+
 
 
 app = FastAPI(title="VerdantIQ Sensor Service", version="1.0.0", lifespan=lifespan)
@@ -325,6 +324,37 @@ async def update_sensor_messages(
     updated = crud.increment_sensor_messages(db, sensor_id, body.message_increment)
     await notify_message_increment(sensor.tenant_id, body.message_increment)
     return updated
+
+
+@app.post("/sensors/{sensor_id}/connect", response_model=schemas.SensorConnectionEventResponse)
+async def initiate_sensor_connection(
+    sensor_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    sensor = crud.get_sensor(db, sensor_id)
+    if not sensor:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sensor not found")
+    if sensor.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+    event = crud.initiate_connection(db, sensor_id, sensor.tenant_id, current_user.user_id, sensor.sensor_name)
+    return event
+
+
+@app.get("/sensors/{sensor_id}/connection-events", response_model=schemas.SensorConnectionEventPage)
+async def get_sensor_connection_events(
+    sensor_id: str,
+    page: int = Query(default=1, ge=1),
+    per_page: int = Query(default=20, ge=5, le=100),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    sensor = crud.get_sensor(db, sensor_id)
+    if not sensor:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sensor not found")
+    if sensor.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+    return crud.get_connection_events(db, sensor_id, page, per_page)
 
 
 @app.get("/health")

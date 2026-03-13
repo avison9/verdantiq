@@ -36,7 +36,8 @@ class Sensor(Base):
     created_at     = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at     = Column(DateTime, onupdate=func.now())
 
-    audit_logs = relationship("SensorAuditLog", back_populates="sensor", passive_deletes=True)
+    audit_logs        = relationship("SensorAuditLog", back_populates="sensor", passive_deletes=True)
+    connection_events = relationship("SensorConnectionEvent", back_populates="sensor", passive_deletes=True)
 
 
 class SensorAuditLog(Base):
@@ -53,15 +54,34 @@ class SensorAuditLog(Base):
     sensor = relationship("Sensor", back_populates="audit_logs")
 
 
+class SensorConnectionEvent(Base):
+    """Immutable event log tracking the lifecycle of a sensor's data pipeline connection."""
+    __tablename__ = "sensor_connection_events"
+    id          = Column(Integer, primary_key=True, autoincrement=True, index=True)
+    sensor_id   = Column(String(36), ForeignKey("sensors.sensor_id", ondelete="CASCADE"), nullable=False, index=True)
+    tenant_id   = Column(Integer, nullable=False, index=True)
+    # event_type: sensor_registered | connection_initiated | data_received | data_streaming | warehouse_synced
+    event_type  = Column(String(50), nullable=False)
+    # status: success | pending | failed
+    status      = Column(String(20), nullable=False, default="success")
+    message     = Column(String(500), nullable=True)
+    details     = Column(JSON, nullable=True)
+    created_at  = Column(DateTime, server_default=func.now(), nullable=False)
+
+    sensor = relationship("Sensor", back_populates="connection_events")
+
+
 # ── Read-only references — auth service owns these tables ─────────────────────
 
 class User(Base):
     __tablename__ = "users"
-    user_id      = Column(Integer, primary_key=True, index=True)
-    tenant_id    = Column(Integer, nullable=False, index=True)
-    email        = Column(String(255), nullable=False)
+    user_id       = Column(Integer, primary_key=True, index=True)
+    tenant_id     = Column(Integer, nullable=False, index=True)
+    email         = Column(String(255), nullable=False)
     password_hash = Column(String(255), nullable=False)
-    status       = Column(String(20), nullable=False)
+    first_name    = Column(String(50), nullable=True)
+    last_name     = Column(String(50), nullable=True)
+    status        = Column(String(20), nullable=False)
 
 
 class Session(Base):

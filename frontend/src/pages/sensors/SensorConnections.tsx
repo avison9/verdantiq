@@ -1,13 +1,15 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import usePageTitle from "../../hooks/usePageTitle";
 import { useGetMeQuery } from "../../redux/apislices/authApiSlice";
 import {
   useGetSensorsQuery,
   useUpdateSensorStatusMutation,
+  useInitiateConnectionMutation,
   type SensorStatus,
 } from "../../redux/apislices/userDashboardApiSlice";
-import { STATUS_STYLES, sensorIcon } from "./SensorList";
+import { STATUS_STYLES, sensorIcon } from "./sensorUtils";
 
 const STATUS_DOT: Record<string, string> = {
   pending:     "bg-orange-400",
@@ -45,19 +47,53 @@ function CopyButton({ value }: { value: string }) {
   );
 }
 
+const PER_PAGE_OPTIONS = [5, 10, 20] as const;
+
+function buildPageRange(current: number, total: number): (number | "...")[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages: (number | "...")[] = [1];
+  if (current > 3) pages.push("...");
+  const start = Math.max(2, current - 1);
+  const end   = Math.min(total - 1, current + 1);
+  for (let i = start; i <= end; i++) pages.push(i);
+  if (current < total - 2) pages.push("...");
+  pages.push(total);
+  return pages;
+}
+
 const SensorConnections = () => {
   usePageTitle("Sensor Connections — VerdantIQ");
+  const navigate = useNavigate();
+
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState<(typeof PER_PAGE_OPTIONS)[number]>(10);
 
   const { data: me } = useGetMeQuery();
-  // Fetch all sensors (no pagination needed here — connections overview)
-  const { data, isLoading } = useGetSensorsQuery(
-    { tenant_id: me?.tenant_id ?? 0, per_page: 100 },
+  const { data, isLoading, isFetching } = useGetSensorsQuery(
+    { tenant_id: me?.tenant_id ?? 0, page, per_page: perPage },
     { skip: !me },
   );
   const [updateStatus] = useUpdateSensorStatusMutation();
+  const [initiateConnection] = useInitiateConnectionMutation();
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [connectingId, setConnectingId] = useState<string | null>(null);
 
-  const sensors = data?.items ?? [];
+  const sensors    = data?.items ?? [];
+  const total      = data?.total ?? 0;
+  const totalPages = data?.pages ?? 1;
+  const pageRange  = buildPageRange(page, totalPages);
+
+  const handleConnect = async (sensor_id: string) => {
+    setConnectingId(sensor_id);
+    try {
+      await initiateConnection(sensor_id).unwrap();
+      toast.success("Connection setup initiated — configure your device with the token below.");
+      navigate(`/sensors/${sensor_id}/connection`);
+    } catch {
+      toast.error("Failed to initiate connection");
+    }
+    setConnectingId(null);
+  };
 
   const handleStatusChange = async (sensor_id: string, newStatus: SensorStatus) => {
     setUpdatingId(sensor_id);
@@ -76,7 +112,7 @@ const SensorConnections = () => {
       <div className="mb-8">
         <h1 className="text-lg font-semibold text-gray-800">Sensor Connections</h1>
         <p className="text-sm text-gray-400 mt-0.5">
-          Configure and monitor each sensor's connection to the data pipeline.
+          {isLoading ? "Loading…" : `${total} sensor${total !== 1 ? "s" : ""} — configure and monitor data pipeline connections.`}
         </p>
       </div>
 
@@ -87,8 +123,8 @@ const SensorConnections = () => {
             d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         <span>
-          Kafka integration is pending. Once connected, sensor status updates automatically when data starts streaming.
-          Use the <strong>MQTT Device Token</strong> to configure your IoT hardware.
+          Data services integration is pending. Once connected, your sensor status will update automatically when data starts flowing.
+          Use the <strong>Device Token</strong> to configure your hardware, then click <strong>Connect to Network</strong> to begin setup.
         </span>
       </div>
 
@@ -97,10 +133,11 @@ const SensorConnections = () => {
       ) : sensors.length === 0 ? (
         <div className="text-sm text-gray-400 py-12 text-center">No sensors registered yet.</div>
       ) : (
-        <div className="space-y-4 max-w-3xl">
+        <div className={`space-y-4 max-w-3xl transition-opacity ${isFetching ? "opacity-60" : ""}`}>
           {sensors.map((s) => {
-            const kafkaTopic = `verdantiq.sensors.${s.sensor_type}`;
-            const isUpdating = updatingId === s.sensor_id;
+            const messageTopic = `verdantiq.sensors.${me?.tenant_id}.${s.sensor_id}`;
+            const isUpdating  = updatingId === s.sensor_id;
+            const isConnecting = connectingId === s.sensor_id;
 
             return (
               <div
@@ -116,34 +153,42 @@ const SensorConnections = () => {
                       <p className="text-xs text-gray-400 capitalize">{s.sensor_type}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${STATUS_DOT[s.status] ?? "bg-gray-400"}`} />
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full capitalize ${
-                      STATUS_STYLES[s.status] ?? "bg-gray-100 text-gray-500"
-                    }`}>
-                      {s.status}
-                    </span>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => navigate(`/sensors/${s.sensor_id}/connection`)}
+                      className="text-xs text-emerald-600 hover:text-emerald-700 font-medium transition-colors"
+                    >
+                      View details →
+                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`w-2 h-2 rounded-full ${STATUS_DOT[s.status] ?? "bg-gray-400"}`} />
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full capitalize ${
+                        STATUS_STYLES[s.status] ?? "bg-gray-100 text-gray-500"
+                      }`}>
+                        {s.status}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
                 {/* Connection details */}
                 <div className="space-y-2 text-xs mb-4">
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-400 uppercase tracking-wide">MQTT Device Token</span>
+                    <span className="text-gray-400 uppercase tracking-wide">Device Token</span>
                     <span className="flex items-center font-mono text-gray-600">
                       {s.mqtt_token.slice(0, 16)}…
                       <CopyButton value={s.mqtt_token} />
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-400 uppercase tracking-wide">Kafka Channel</span>
-                    <span className="flex items-center font-mono text-gray-600">
-                      {kafkaTopic}
-                      <CopyButton value={kafkaTopic} />
+                    <span className="text-gray-400 uppercase tracking-wide">Message Channel</span>
+                    <span className="flex items-center font-mono text-gray-600 text-right max-w-[240px] truncate">
+                      {messageTopic}
+                      <CopyButton value={messageTopic} />
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-400 uppercase tracking-wide">Msg Backup Channels</span>
+                    <span className="text-gray-400 uppercase tracking-wide">Backup Channels</span>
                     <span className="font-mono text-gray-700 font-semibold">3</span>
                   </div>
                   <div className="flex items-center justify-between">
@@ -152,23 +197,23 @@ const SensorConnections = () => {
                   </div>
                 </div>
 
-                {/* Status actions */}
+                {/* Actions */}
                 <div className="border-t border-gray-50 pt-3 flex items-center justify-between">
                   <p className="text-xs text-gray-400">
                     {s.status === "pending"
-                      ? "Configure your device with the MQTT token above, then mark active once data flows."
+                      ? "Configure your device with the token above, then connect it to the network."
                       : s.status === "active"
-                      ? "Sensor is connected and streaming data."
-                      : "Update status below to reflect the sensor's connection state."}
+                      ? "Sensor is connected and data is flowing."
+                      : "Reconnect your device to resume data flow."}
                   </p>
                   <div className="flex items-center gap-2 shrink-0 ml-4">
                     {s.status === "pending" && (
                       <button
-                        disabled={isUpdating}
-                        onClick={() => handleStatusChange(s.sensor_id, "active")}
+                        disabled={isConnecting}
+                        onClick={() => handleConnect(s.sensor_id)}
                         className="text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
                       >
-                        {isUpdating ? "Updating…" : "Mark as Active"}
+                        {isConnecting ? "Setting up…" : "Connect to Network"}
                       </button>
                     )}
                     {s.status === "active" && (
@@ -182,11 +227,11 @@ const SensorConnections = () => {
                     )}
                     {(s.status === "inactive" || s.status === "error") && (
                       <button
-                        disabled={isUpdating}
-                        onClick={() => handleStatusChange(s.sensor_id, "active")}
+                        disabled={isConnecting}
+                        onClick={() => handleConnect(s.sensor_id)}
                         className="text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
                       >
-                        {isUpdating ? "Updating…" : "Reconnect"}
+                        {isConnecting ? "Setting up…" : "Reconnect to Network"}
                       </button>
                     )}
                   </div>
@@ -194,6 +239,50 @@ const SensorConnections = () => {
               </div>
             );
           })}
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="pt-4 flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  disabled={page === 1}
+                  onClick={() => setPage((p) => p - 1)}
+                  className="w-5 h-5 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-xs"
+                >‹</button>
+
+                {pageRange.map((p, idx) =>
+                  p === "..." ? (
+                    <span key={`e-${idx}`} className="w-5 h-5 flex items-center justify-center text-gray-400 text-xs">…</span>
+                  ) : (
+                    <button
+                      key={p}
+                      onClick={() => setPage(p)}
+                      className={`w-5 h-5 flex items-center justify-center rounded-full text-xs font-medium transition-colors ${
+                        p === page ? "bg-emerald-600 text-white" : "text-gray-500 hover:bg-gray-100"
+                      }`}
+                    >{p}</button>
+                  )
+                )}
+
+                <button
+                  disabled={page === totalPages}
+                  onClick={() => setPage((p) => p + 1)}
+                  className="w-5 h-5 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-xs"
+                >›</button>
+              </div>
+
+              <div className="flex items-center gap-2 text-xs text-gray-400">
+                <span>Per page</span>
+                <select
+                  value={perPage}
+                  onChange={(e) => { setPerPage(Number(e.target.value) as typeof perPage); setPage(1); }}
+                  className="border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-600 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                >
+                  {PER_PAGE_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

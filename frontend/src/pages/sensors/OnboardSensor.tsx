@@ -30,6 +30,11 @@ const OnboardSensor = () => {
     location: "",
     latitude: "",
     longitude: "",
+    manufacturer: "",
+    model: "",
+    serial_number: "",
+    operating_system: "",
+    power_type: "ac",
   });
 
   const billingActive = billing?.status === "active";
@@ -61,6 +66,11 @@ const OnboardSensor = () => {
         sensor_type: form.sensor_type,
         location: form.location.trim() || undefined,
         sensor_metadata: Object.keys(sensor_metadata).length ? sensor_metadata : undefined,
+        manufacturer:     form.manufacturer.trim()     || undefined,
+        model:            form.model.trim()            || undefined,
+        serial_number:    form.serial_number.trim()    || undefined,
+        operating_system: form.operating_system.trim() || undefined,
+        power_type:       form.power_type              || undefined,
       }).unwrap();
 
       toast.success(`Sensor "${form.sensor_name}" onboarded successfully`);
@@ -181,6 +191,51 @@ const OnboardSensor = () => {
                   className={inputCls}
                 />
               </div>
+            </div>
+
+            {/* Hardware details */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                  Manufacturer <span className="normal-case font-normal text-gray-400">(optional)</span>
+                </label>
+                <input name="manufacturer" value={form.manufacturer} onChange={handleChange}
+                  placeholder="e.g. Bosch, Sensirion" className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                  Model <span className="normal-case font-normal text-gray-400">(optional)</span>
+                </label>
+                <input name="model" value={form.model} onChange={handleChange}
+                  placeholder="e.g. SHT31-D" className={inputCls} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                  Serial Number <span className="normal-case font-normal text-gray-400">(optional)</span>
+                </label>
+                <input name="serial_number" value={form.serial_number} onChange={handleChange}
+                  placeholder="e.g. SN-00123456" className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                  Operating System <span className="normal-case font-normal text-gray-400">(optional)</span>
+                </label>
+                <input name="operating_system" value={form.operating_system} onChange={handleChange}
+                  placeholder="e.g. FreeRTOS, Linux" className={inputCls} />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                Power Source
+              </label>
+              <select name="power_type" value={form.power_type} onChange={handleChange} className={inputCls}>
+                <option value="ac">AC (mains power)</option>
+                <option value="dc">DC (battery)</option>
+              </select>
             </div>
 
             {/* Tenant (read-only) */}

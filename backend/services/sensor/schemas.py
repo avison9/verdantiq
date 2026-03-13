@@ -11,6 +11,12 @@ class SensorCreate(BaseModel):
     sensor_type: str
     location: Optional[str] = None
     sensor_metadata: Optional[dict] = None
+    # Hardware / identity fields (stored in sensor_metadata)
+    manufacturer: Optional[str] = None
+    model: Optional[str] = None
+    serial_number: Optional[str] = None
+    operating_system: Optional[str] = None
+    power_type: Optional[str] = None   # "ac" | "dc"
 
 
 class SensorResponse(BaseModel):
@@ -54,6 +60,7 @@ class SensorAuditLogResponse(BaseModel):
     sensor_name: str
     action: str
     performed_by: int
+    performed_by_name: Optional[str] = None  # first_name of the user
     details: Optional[dict] = None
     created_at: datetime
 
@@ -62,6 +69,27 @@ class SensorAuditLogResponse(BaseModel):
 
 class SensorAuditPage(BaseModel):
     items: List[SensorAuditLogResponse]
+    total: int
+    page: int
+    per_page: int
+    pages: int
+
+
+class SensorConnectionEventResponse(BaseModel):
+    id: int
+    sensor_id: str
+    tenant_id: int
+    event_type: str
+    status: str
+    message: Optional[str] = None
+    details: Optional[dict] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class SensorConnectionEventPage(BaseModel):
+    items: List[SensorConnectionEventResponse]
     total: int
     page: int
     per_page: int
