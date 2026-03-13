@@ -34,8 +34,28 @@ export interface SensorAuditLog {
   sensor_name: string;
   action: string;
   performed_by: number;
+  performed_by_name: string | null;
   details: Record<string, unknown> | null;
   created_at: string;
+}
+
+export interface SensorConnectionEvent {
+  id: number;
+  sensor_id: string;
+  tenant_id: number;
+  event_type: string;
+  status: string;
+  message: string | null;
+  details: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface SensorConnectionEventPage {
+  items: SensorConnectionEvent[];
+  total: number;
+  page: number;
+  per_page: number;
+  pages: number;
 }
 
 export interface SensorAuditPage {
@@ -152,6 +172,18 @@ export const userDashboardApiSlice = baseApiSlice.injectEndpoints({
       }),
       invalidatesTags: ["Sensor"],
     }),
+    initiateConnection: builder.mutation<SensorConnectionEvent, string>({
+      query: (sensor_id) => ({
+        url: `${APIendPoints.sensors}/${sensor_id}/connect`,
+        method: "POST",
+      }),
+      invalidatesTags: ["Sensor"],
+    }),
+    getSensorConnectionEvents: builder.query<SensorConnectionEventPage, { sensor_id: string; page?: number; per_page?: number }>({
+      query: ({ sensor_id, page = 1, per_page = 20 }) =>
+        `${APIendPoints.sensors}/${sensor_id}/connection-events?page=${page}&per_page=${per_page}`,
+      providesTags: ["Sensor"],
+    }),
     getBilling: builder.query<Billing, void>({
       query: () => `${APIendPoints.billings}/`,
       providesTags: ["User", "Billing"],
@@ -181,6 +213,8 @@ export const {
   useRenameSensorMutation,
   useUpdateSensorStatusMutation,
   useDeleteSensorMutation,
+  useInitiateConnectionMutation,
+  useGetSensorConnectionEventsQuery,
   useTopUpBillingMutation,
   useGetTransactionsQuery,
 } = userDashboardApiSlice;

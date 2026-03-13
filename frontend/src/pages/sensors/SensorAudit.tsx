@@ -94,7 +94,7 @@ const SensorAudit = () => {
                     <th className="px-6 py-3 text-left">Action</th>
                     <th className="px-6 py-3 text-left">Sensor</th>
                     <th className="px-6 py-3 text-left">Details</th>
-                    <th className="px-6 py-3 text-right">By (user ID)</th>
+                    <th className="px-6 py-3 text-right">By</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -122,8 +122,8 @@ const SensorAudit = () => {
                       <td className="px-6 py-3 text-gray-500 text-xs max-w-xs truncate">
                         {formatDetails(e.action, e.details)}
                       </td>
-                      <td className="px-6 py-3 text-right text-gray-400 text-xs font-mono">
-                        #{e.performed_by}
+                      <td className="px-6 py-3 text-right text-gray-500 text-xs">
+                        {e.performed_by_name ?? `#${e.performed_by}`}
                       </td>
                     </tr>
                   ))}
