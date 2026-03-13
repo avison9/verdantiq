@@ -247,7 +247,7 @@ const Transactions = () => {
                 <button
                   disabled={page === 1}
                   onClick={() => setPage((p) => p - 1)}
-                  className="w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-xs"
+                  className="w-5 h-5 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-xs"
                 >
                   ‹
                 </button>
@@ -256,7 +256,7 @@ const Transactions = () => {
                   p === "..." ? (
                     <span
                       key={`ellipsis-${idx}`}
-                      className="w-7 h-7 flex items-center justify-center text-gray-400 text-xs select-none"
+                      className="w-5 h-5 flex items-center justify-center text-gray-400 text-xs select-none"
                     >
                       …
                     </span>
@@ -264,7 +264,7 @@ const Transactions = () => {
                     <button
                       key={p}
                       onClick={() => setPage(p)}
-                      className={`w-7 h-7 flex items-center justify-center rounded-full text-xs font-medium transition-colors ${
+                      className={`w-5 h-5 flex items-center justify-center rounded-full text-xs font-medium transition-colors ${
                         p === page
                           ? "bg-emerald-600 text-white"
                           : "text-gray-500 hover:bg-gray-100"
@@ -279,7 +279,7 @@ const Transactions = () => {
                 <button
                   disabled={page === totalPages}
                   onClick={() => setPage((p) => p + 1)}
-                  className="w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-xs"
+                  className="w-5 h-5 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-xs"
                 >
                   ›
                 </button>

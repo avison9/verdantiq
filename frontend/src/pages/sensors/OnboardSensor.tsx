@@ -28,6 +28,8 @@ const OnboardSensor = () => {
     sensor_name: "",
     sensor_type: "temperature",
     location: "",
+    latitude: "",
+    longitude: "",
   });
 
   const billingActive = billing?.status === "active";
@@ -47,11 +49,18 @@ const OnboardSensor = () => {
     }
 
     try {
+      const lat = parseFloat(form.latitude);
+      const lon = parseFloat(form.longitude);
+      const sensor_metadata: Record<string, unknown> = {};
+      if (!isNaN(lat)) sensor_metadata.latitude = lat;
+      if (!isNaN(lon)) sensor_metadata.longitude = lon;
+
       await createSensor({
         tenant_id: me.tenant_id,
         sensor_name: form.sensor_name.trim(),
         sensor_type: form.sensor_type,
         location: form.location.trim() || undefined,
+        sensor_metadata: Object.keys(sensor_metadata).length ? sensor_metadata : undefined,
       }).unwrap();
 
       toast.success(`Sensor "${form.sensor_name}" onboarded successfully`);
@@ -140,6 +149,38 @@ const OnboardSensor = () => {
                 placeholder="e.g. North Field, Zone 3"
                 className={inputCls}
               />
+            </div>
+
+            {/* Coordinates */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                  Latitude <span className="normal-case font-normal text-gray-400">(optional)</span>
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  name="latitude"
+                  value={form.latitude}
+                  onChange={handleChange}
+                  placeholder="e.g. 6.5244"
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                  Longitude <span className="normal-case font-normal text-gray-400">(optional)</span>
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  name="longitude"
+                  value={form.longitude}
+                  onChange={handleChange}
+                  placeholder="e.g. 3.3792"
+                  className={inputCls}
+                />
+              </div>
             </div>
 
             {/* Tenant (read-only) */}

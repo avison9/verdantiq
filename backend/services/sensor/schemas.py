@@ -22,6 +22,7 @@ class SensorResponse(BaseModel):
     sensor_metadata: Optional[dict] = None
     message_count: int
     status: SensorStatus
+    last_message_at: Optional[datetime] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 

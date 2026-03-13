@@ -8,8 +8,10 @@ export interface Sensor {
   sensor_name: string;
   sensor_type: string;
   location: string | null;
+  sensor_metadata: Record<string, unknown> | null;
   message_count: number;
   status: "active" | "inactive" | "error" | "maintenance";
+  last_message_at: string | null;
   created_at: string;
   updated_at: string | null;
 }
@@ -83,6 +85,10 @@ export const userDashboardApiSlice = baseApiSlice.injectEndpoints({
         `${APIendPoints.sensors}/?tenant_id=${tenant_id}&limit=${limit}`,
       providesTags: ["Sensor"],
     }),
+    getSensor: builder.query<Sensor, number>({
+      query: (sensor_id) => `${APIendPoints.sensors}/${sensor_id}`,
+      providesTags: ["Sensor"],
+    }),
     getBilling: builder.query<Billing, void>({
       query: () => `${APIendPoints.billings}/`,
       providesTags: ["User", "Billing"],
@@ -113,6 +119,7 @@ export const userDashboardApiSlice = baseApiSlice.injectEndpoints({
 
 export const {
   useGetSensorsQuery,
+  useGetSensorQuery,
   useGetBillingQuery,
   useCreateSensorMutation,
   useTopUpBillingMutation,

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import usePageTitle from "../../hooks/usePageTitle";
 import { useGetMeQuery } from "../../redux/apislices/authApiSlice";
 import { useGetSensorsQuery } from "../../redux/apislices/userDashboardApiSlice";
@@ -31,6 +31,7 @@ const STATUS_OPTIONS = ["all", "active", "inactive", "error", "maintenance"] as 
 
 const SensorList = () => {
   usePageTitle("Sensors — VerdantIQ");
+  const navigate = useNavigate();
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
 
@@ -129,7 +130,11 @@ const SensorList = () => {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {filtered.map((s) => (
-                  <tr key={s.sensor_id} className="hover:bg-gray-50 transition-colors">
+                  <tr
+                    key={s.sensor_id}
+                    onClick={() => navigate(`/sensors/${s.sensor_id}`)}
+                    className="hover:bg-gray-50 transition-colors cursor-pointer"
+                  >
                     <td className="px-6 py-3 font-medium text-gray-800">{s.sensor_name}</td>
                     <td className="px-6 py-3 text-gray-500">
                       <span className="mr-1">{sensorIcon(s.sensor_type)}</span>

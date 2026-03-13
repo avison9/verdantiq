@@ -145,6 +145,20 @@ async def list_sensors(
     return crud.get_sensors_by_tenant(db, tenant_id, skip=skip, limit=limit)
 
 
+@app.get("/sensors/{sensor_id}", response_model=schemas.SensorResponse)
+async def get_sensor(
+    sensor_id: int,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    sensor = crud.get_sensor(db, sensor_id)
+    if not sensor:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sensor not found")
+    if sensor.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+    return sensor
+
+
 @app.delete("/sensors/{sensor_id}", response_model=schemas.SensorResponse)
 async def delete_sensor(
     sensor_id: int,

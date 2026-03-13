@@ -79,7 +79,7 @@ async def login_user(
     if db_user.status != models.UserStatus.active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User not active")
 
-    expires_delta = timedelta(minutes=30)
+    expires_delta = timedelta(hours=1)
     db_session, token = create_session(db, db_user.user_id, db_user.tenant_id, request, expires_delta)
 
     response = JSONResponse(content={"access_token": token, "token_type": "bearer"})

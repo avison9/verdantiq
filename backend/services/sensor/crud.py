@@ -6,6 +6,7 @@ import trino.exceptions
 import uuid
 from configs import settings
 from typing import List, Optional
+from datetime import datetime, timezone
 
 
 def create_sensor(db: Session, sensor: schemas.SensorCreate, user_id: int) -> models.Sensor:
@@ -53,6 +54,7 @@ def increment_sensor_messages(db: Session, sensor_id: int, increment: int) -> mo
     db_sensor = db.query(models.Sensor).filter(models.Sensor.sensor_id == sensor_id).first()
     if db_sensor:
         db_sensor.message_count += increment
+        db_sensor.last_message_at = datetime.now(timezone.utc).replace(tzinfo=None)
         db.commit()
         db.refresh(db_sensor)
     return db_sensor
