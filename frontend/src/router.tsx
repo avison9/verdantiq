@@ -1,5 +1,6 @@
 import { createBrowserRouter } from "react-router-dom";
 import MarketingLayout from "./components/MarketingLayout";
+import DashboardLayout from "./components/DashboardLayout";
 import LandingPage from "./pages/LandingPage";
 import AboutUs from "./pages/marketing/AboutUs";
 import MissionVision from "./pages/marketing/MissionVision";
@@ -7,6 +8,9 @@ import ContactUs from "./pages/marketing/ContactUs";
 import Pricing from "./pages/marketing/Pricing";
 import Dashboard from "./pages/Dashboard";
 import OnboardSensor from "./pages/sensors/OnboardSensor";
+import SensorList from "./pages/sensors/SensorList";
+import SetupBilling from "./pages/billing/SetupBilling";
+import Transactions from "./pages/billing/Transactions";
 import Login from "./pages/authentication/Login";
 import Register from "./pages/authentication/Register";
 import ForgotPassword from "./pages/authentication/ForgotPassword";
@@ -18,7 +22,7 @@ import UserProfile from "./pages/profile/UserProfile";
 import TenantProfile from "./pages/profile/TenantProfile";
 
 export const router = createBrowserRouter([
-  // ── Marketing shell (transparent nav + rich footer) ────────────────────────
+  // ── Marketing shell ────────────────────────────────────────────────────────
   {
     element: <MarketingLayout />,
     children: [
@@ -30,18 +34,26 @@ export const router = createBrowserRouter([
     ],
   },
 
-  // ── Protected routes (dashboard has its own top bar) ───────────────────────
+  // ── Protected routes (all share DashboardLayout sidebar) ──────────────────
   {
     element: <PrivateRoute />,
     children: [
-      { path: "/dashboard",        element: <Dashboard /> },
-      { path: "/sensors/onboard",  element: <OnboardSensor /> },
-      { path: "/profile/user",     element: <UserProfile /> },
-      { path: "/profile/tenant",   element: <TenantProfile /> },
+      {
+        element: <DashboardLayout />,
+        children: [
+          { path: "/dashboard",             element: <Dashboard /> },
+          { path: "/sensors/onboard",       element: <OnboardSensor /> },
+          { path: "/sensors/list",          element: <SensorList /> },
+          { path: "/billing/setup",         element: <SetupBilling /> },
+          { path: "/billing/transactions",  element: <Transactions /> },
+          { path: "/profile/user",          element: <UserProfile /> },
+          { path: "/profile/tenant",        element: <TenantProfile /> },
+        ],
+      },
     ],
   },
 
-  // ── Auth routes ───────────────────────────────────────────────────────────
+  // ── Auth routes ────────────────────────────────────────────────────────────
   { path: "/login",           element: <Login /> },
   { path: "/register",        element: <Register /> },
   { path: "/forgot-password", element: <ForgotPassword /> },

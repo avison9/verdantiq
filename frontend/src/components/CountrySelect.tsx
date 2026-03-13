@@ -131,7 +131,8 @@ const CountrySelect = ({
         <ul
           ref={listRef}
           role="listbox"
-          className="absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg text-sm"
+          className="absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg text-sm [&::-webkit-scrollbar]:hidden"
+          style={{ scrollbarWidth: "none" }}
         >
           {filtered.map((country, idx) => (
             <li
