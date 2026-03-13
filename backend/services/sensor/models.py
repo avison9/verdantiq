@@ -29,6 +29,7 @@ class Sensor(Base):
     mqtt_token = Column(String(36), nullable=False, unique=True)
     message_count = Column(Integer, default=0, nullable=False)
     status = Column(Enum(SensorStatus), nullable=False, default=SensorStatus.active)
+    last_message_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, onupdate=func.now())
 
