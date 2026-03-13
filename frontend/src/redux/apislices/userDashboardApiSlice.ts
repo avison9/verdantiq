@@ -93,6 +93,19 @@ export interface SensorCreate {
   power_type?: string;
 }
 
+export interface SensorUpdate {
+  sensor_id: string;
+  sensor_name?: string;
+  sensor_type?: string;
+  location?: string;
+  sensor_metadata?: Record<string, unknown>;
+  manufacturer?: string;
+  model?: string;
+  serial_number?: string;
+  operating_system?: string;
+  power_type?: string;
+}
+
 export interface BillingTopUp {
   amount: number;
   payment_method: string;
@@ -150,6 +163,14 @@ export const userDashboardApiSlice = baseApiSlice.injectEndpoints({
       query: (body) => ({
         url: `${APIendPoints.sensors}/`,
         method: "POST",
+        body,
+      }),
+      invalidatesTags: ["Sensor"],
+    }),
+    updateSensor: builder.mutation<Sensor, SensorUpdate>({
+      query: ({ sensor_id, ...body }) => ({
+        url: `${APIendPoints.sensors}/${sensor_id}`,
+        method: "PATCH",
         body,
       }),
       invalidatesTags: ["Sensor"],
@@ -215,6 +236,7 @@ export const {
   useGetSensorAuditQuery,
   useGetBillingQuery,
   useCreateSensorMutation,
+  useUpdateSensorMutation,
   useRenameSensorMutation,
   useUpdateSensorStatusMutation,
   useDeleteSensorMutation,

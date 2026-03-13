@@ -861,11 +861,12 @@ def test_isolation_a_sensor_list_contains_no_b_records(tenant_a, tenant_b_sensor
         f"{SENSOR_URL}/sensors/", params={"tenant_id": tenant_a["tenant_id"], "limit": 100}
     )
     assert r.status_code == 200
-    sensor_ids = [s["sensor_id"] for s in r.json()]
+    items = r.json()["items"]
+    sensor_ids = [s["sensor_id"] for s in items]
     assert tenant_b_sensor not in sensor_ids, (
         f"Tenant B's sensor_id {tenant_b_sensor} leaked into Tenant A's sensor list"
     )
-    tenant_ids_in_response = {s["tenant_id"] for s in r.json()}
+    tenant_ids_in_response = {s["tenant_id"] for s in items}
     assert tenant_a["tenant_id"] not in (tenant_ids_in_response - {tenant_a["tenant_id"]}), \
         "A's sensor list contains records from a foreign tenant_id"
 

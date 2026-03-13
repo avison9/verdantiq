@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState, useLayoutEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import usePageTitle from "../../hooks/usePageTitle";
 import { useGetSensorQuery } from "../../redux/apislices/userDashboardApiSlice";
@@ -17,9 +17,12 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
 
 // ── Card wrapper ───────────────────────────────────────────────────────────────
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+function Card({ title, children, minHeight }: { title: string; children: React.ReactNode; minHeight?: number }) {
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col h-full overflow-hidden">
+    <div
+      className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col overflow-hidden w-full"
+      style={minHeight ? { minHeight } : undefined}
+    >
       <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3 shrink-0">{title}</p>
       <div className="flex-1 overflow-y-auto space-y-0 pr-0.5
                       [&::-webkit-scrollbar]:w-1
@@ -44,12 +47,15 @@ const PLACEHOLDER_LINES = [
   "Waiting for messages...",
 ];
 
-function Terminal() {
+function Terminal({ minHeight }: { minHeight?: number }) {
   const bottomRef = useRef<HTMLDivElement>(null);
   useEffect(() => { bottomRef.current?.scrollIntoView(); }, []);
 
   return (
-    <div className="bg-gray-950 rounded-2xl border border-gray-800 overflow-hidden flex flex-col h-full">
+    <div
+      className="bg-gray-950 rounded-2xl border border-gray-800 overflow-hidden flex flex-col"
+      style={minHeight ? { minHeight } : undefined}
+    >
       <div className="flex items-center gap-1.5 px-4 py-2.5 bg-gray-900 border-b border-gray-800 shrink-0">
         <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
         <span className="w-2.5 h-2.5 rounded-full bg-yellow-400" />
@@ -88,12 +94,25 @@ const SensorDetail = () => {
 
   usePageTitle(sensor ? `${sensor.sensor_name} — VerdantIQ` : "Sensor — VerdantIQ");
 
-  const meta = sensor?.sensor_metadata ?? {};
+  // Measure Sensor Info card height (tallest card after full UUID renders)
+  // and apply it to every other card so all 6 are identical in size.
+  const refCardRef = useRef<HTMLDivElement>(null);
+  const [cardHeight, setCardHeight] = useState<number | undefined>();
 
+  useLayoutEffect(() => {
+    if (!refCardRef.current) return;
+    const ro = new ResizeObserver(() => {
+      setCardHeight(refCardRef.current?.offsetHeight);
+    });
+    ro.observe(refCardRef.current);
+    return () => ro.disconnect();
+  }, [sensor]);
+
+  const meta = sensor?.sensor_metadata ?? {};
   const get = (key: string) => (meta[key] != null ? String(meta[key]) : null);
 
-  const latitude    = get("latitude");
-  const longitude   = get("longitude");
+  const latitude     = get("latitude");
+  const longitude    = get("longitude");
   const manufacturer = get("manufacturer");
   const model        = get("model");
   const serialNo     = get("serial_number");
@@ -115,8 +134,9 @@ const SensorDetail = () => {
     : "—";
 
   const dataStatus = sensor?.status === "active" ? "Online" : "Offline";
-
   const gps = latitude && longitude ? `${latitude}, ${longitude}` : null;
+
+  const matchStyle = cardHeight ? { minHeight: cardHeight } : undefined;
 
   return (
     <div className="px-6 py-8">
@@ -155,12 +175,13 @@ const SensorDetail = () => {
             </span>
           </div>
 
-          {/* ── 6 cards in one grid so rows match height ── */}
-          <div className="grid grid-cols-3 gap-4" style={{ gridAutoRows: "1fr" }}>
+          {/* ── Upper row: 3 content cards ── */}
+          <div className="grid grid-cols-3 gap-4">
 
-            {/* Card 1 — Sensor Info */}
+            {/* Card 1 — Sensor Info (reference card — tallest due to full UUID) */}
+            <div ref={refCardRef}>
             <Card title="Sensor Info">
-              <DetailRow label="Sensor ID"    value={<span className="font-mono text-gray-500">{sensor.sensor_id.slice(0, 16)}…</span>} />
+              <DetailRow label="Sensor ID"    value={<span className="font-mono text-gray-500 break-all">{sensor.sensor_id}</span>} />
               <DetailRow label="Name"         value={sensor.sensor_name} />
               <DetailRow label="Manufacturer" value={manufacturer ?? <Nil />} />
               <DetailRow label="Model"        value={model ?? <Nil />} />
@@ -171,10 +192,11 @@ const SensorDetail = () => {
               })} />
               <DetailRow label="Serial No."   value={serialNo ?? <Nil />} />
             </Card>
+            </div>
 
             {/* Card 2 — Connection */}
-            <Card title="Connection">
-              <DetailRow label="Device Token" value={<span className="font-mono text-gray-500">{sensor.mqtt_token.slice(0, 16)}…</span>} />
+            <Card title="Connection" minHeight={cardHeight}>
+              <DetailRow label="Device Token" value={<span className="font-mono text-gray-500 break-all">{sensor.mqtt_token}</span>} />
               <DetailRow label="Message Channel" value={<span className="font-mono text-gray-500 break-all" style={{fontSize:"10px"}}>{messageTopic}</span>} />
               <DetailRow label="Backup Channels" value={<span className="font-mono font-semibold text-gray-700">3</span>} />
               <DetailRow label="Protocol"     value="MQTT / Kafka" />
@@ -189,24 +211,31 @@ const SensorDetail = () => {
             </Card>
 
             {/* Card 3 — Hardware */}
-            <Card title="Hardware">
-              <DetailRow label="Firmware"  value={firmware ?? <Nil />} />
-              <DetailRow label="OS"        value={os ?? <Nil />} />
+            <Card title="Hardware" minHeight={cardHeight}>
+              <DetailRow label="Firmware"    value={firmware ?? <Nil />} />
+              <DetailRow label="OS"          value={os ?? <Nil />} />
               <DetailRow label="MAC Address" value={macAddr ? <span className="font-mono text-gray-500">{macAddr}</span> : <Nil />} />
               <DetailRow label="IP Address"  value={ipAddr  ? <span className="font-mono text-gray-500">{ipAddr}</span>  : <Nil />} />
-              <DetailRow label="Power"     value={powerType ? powerType.toUpperCase() : <Nil />} />
+              <DetailRow label="Power"       value={powerType ? powerType.toUpperCase() : <Nil />} />
               {powerType === "dc" && (
-                <DetailRow label="Battery" value={battery ? `${battery}%` : <Nil />} />
+                <DetailRow label="Battery"   value={battery ? `${battery}%` : <Nil />} />
               )}
-              <DetailRow label="Memory"    value={memory ?? <Nil />} />
-              <DetailRow label="GPS"       value={gps ?? <Nil />} />
+              <DetailRow label="Memory"      value={memory ?? <Nil />} />
+              <DetailRow label="GPS"         value={gps ?? <Nil />} />
             </Card>
+          </div>
+
+          {/* ── Lower row: 3 placeholder cards sized to match upper row ── */}
+          <div className="grid grid-cols-3 gap-4">
 
             {/* Card 4 — Terminal */}
-            <Terminal />
+            <Terminal minHeight={cardHeight} />
 
             {/* Card 5 — Analytics placeholder */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col h-full">
+            <div
+              className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col"
+              style={matchStyle}
+            >
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3 shrink-0">Analytics</p>
               <div className="flex-1 flex items-center justify-center">
                 <div className="text-center">
@@ -222,8 +251,11 @@ const SensorDetail = () => {
               </div>
             </div>
 
-            {/* Card 6 — Placeholder */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col h-full">
+            {/* Card 6 — Map placeholder */}
+            <div
+              className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col"
+              style={matchStyle}
+            >
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3 shrink-0">Map View</p>
               <div className="flex-1 flex items-center justify-center">
                 <div className="text-center">

@@ -239,6 +239,23 @@ async def get_sensor(
     return sensor
 
 
+@app.patch("/sensors/{sensor_id}", response_model=schemas.SensorResponse)
+async def update_sensor(
+    sensor_id: str,
+    body: schemas.SensorUpdate,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    sensor = crud.get_sensor(db, sensor_id)
+    if not sensor:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sensor not found")
+    if sensor.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+    updated = crud.update_sensor(db, sensor_id, body, current_user.user_id)
+    await sync_iot_devices(sensor.tenant_id, db)
+    return updated
+
+
 @app.patch("/sensors/{sensor_id}/rename", response_model=schemas.SensorResponse)
 async def rename_sensor(
     sensor_id: str,

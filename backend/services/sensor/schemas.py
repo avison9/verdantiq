@@ -45,6 +45,18 @@ class SensorPage(BaseModel):
     pages: int
 
 
+class SensorUpdate(BaseModel):
+    sensor_name: Optional[str] = None
+    sensor_type: Optional[str] = None
+    location: Optional[str] = None
+    sensor_metadata: Optional[dict] = None
+    manufacturer: Optional[str] = None
+    model: Optional[str] = None
+    serial_number: Optional[str] = None
+    operating_system: Optional[str] = None
+    power_type: Optional[str] = None
+
+
 class SensorRenameRequest(BaseModel):
     sensor_name: str
 
