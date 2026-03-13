@@ -6,7 +6,7 @@ import {
   useGetSensorConnectionEventsQuery,
   type SensorConnectionEvent,
 } from "../../redux/apislices/userDashboardApiSlice";
-import { STATUS_STYLES } from "./SensorList";
+import { STATUS_STYLES } from "./sensorUtils";
 
 const PER_PAGE_OPTIONS = [10, 20, 50] as const;
 
@@ -59,12 +59,6 @@ const EVENT_META: Record<string, { label: string; icon: React.ReactNode; color: 
       </svg>
     ),
   },
-};
-
-const STATUS_DOT: Record<string, string> = {
-  success: "bg-emerald-500",
-  pending: "bg-orange-400",
-  failed:  "bg-red-500",
 };
 
 const STATUS_BADGE: Record<string, string> = {

@@ -86,6 +86,11 @@ export interface SensorCreate {
   sensor_type: string;
   location?: string;
   sensor_metadata?: Record<string, unknown>;
+  manufacturer?: string;
+  model?: string;
+  serial_number?: string;
+  operating_system?: string;
+  power_type?: string;
 }
 
 export interface BillingTopUp {

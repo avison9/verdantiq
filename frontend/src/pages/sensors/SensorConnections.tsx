@@ -9,7 +9,7 @@ import {
   useInitiateConnectionMutation,
   type SensorStatus,
 } from "../../redux/apislices/userDashboardApiSlice";
-import { STATUS_STYLES, sensorIcon } from "./SensorList";
+import { STATUS_STYLES, sensorIcon } from "./sensorUtils";
 
 const STATUS_DOT: Record<string, string> = {
   pending:     "bg-orange-400",
