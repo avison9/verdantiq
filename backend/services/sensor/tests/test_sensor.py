@@ -26,7 +26,7 @@ def test_onboard_sensor(client, sensor_payload, monkeypatch):
     data = _create_sensor(client, sensor_payload, monkeypatch)
     assert data["sensor_name"] == sensor_payload["sensor_name"]
     assert data["tenant_id"] == sensor_payload["tenant_id"]
-    assert data["status"] == "active"
+    assert data["status"] == "pending"
     assert data["message_count"] == 0
     assert "sensor_id" in data
 
@@ -56,8 +56,8 @@ def test_list_sensors(client, sensor_payload, mock_user, monkeypatch):
     response = client.get(f"/sensors/?tenant_id={mock_user.tenant_id}")
     assert response.status_code == 200
     data = response.json()
-    assert len(data) >= 1
-    assert data[0]["sensor_name"] == sensor_payload["sensor_name"]
+    assert len(data["items"]) >= 1
+    assert data["items"][0]["sensor_name"] == sensor_payload["sensor_name"]
 
 
 def test_list_sensors_unauthorized_tenant(client, mock_user, monkeypatch):
@@ -115,7 +115,8 @@ def test_update_sensor_messages(client, sensor_payload, monkeypatch):
     assert response.json()["message_count"] == 100
 
 
-def test_update_sensor_messages_unauthorized(client, db_session, mock_user, monkeypatch):
+def test_update_sensor_messages_same_tenant_allowed(client, db_session, mock_user, monkeypatch):
+    """Messages endpoint allows any user in the same tenant (Kafka pipeline use case)."""
     sensor = models.Sensor(
         tenant_id=mock_user.tenant_id,
         user_id=9999,
@@ -132,7 +133,8 @@ def test_update_sensor_messages_unauthorized(client, db_session, mock_user, monk
     response = client.post(
         f"/sensors/{sensor.sensor_id}/messages", json={"message_increment": 50}
     )
-    assert response.status_code == 403
+    assert response.status_code == 200
+    assert response.json()["message_count"] == 50
 
 
 def test_get_sensor_data(client, sensor_payload, monkeypatch):
@@ -207,13 +209,13 @@ def test_list_sensors_pagination(client, mock_user, db_session):
         )
     db_session.commit()
 
-    r1 = client.get(f"/sensors/?tenant_id={mock_user.tenant_id}&skip=0&limit=10")
+    r1 = client.get(f"/sensors/?tenant_id={mock_user.tenant_id}&page=1&per_page=10")
     assert r1.status_code == 200
-    assert len(r1.json()) == 10
+    assert len(r1.json()["items"]) == 10
 
-    r3 = client.get(f"/sensors/?tenant_id={mock_user.tenant_id}&skip=20&limit=10")
+    r3 = client.get(f"/sensors/?tenant_id={mock_user.tenant_id}&page=3&per_page=10")
     assert r3.status_code == 200
-    assert len(r3.json()) == 5
+    assert len(r3.json()["items"]) == 5
 
 
 # ── 1.2 Sensor data via Trino ─────────────────────────────────────────────────

@@ -3,61 +3,81 @@ from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from configs import Base
 import enum
+import uuid
 
 
 class SensorStatus(str, enum.Enum):
-    active = "active"
-    inactive = "inactive"
+    pending     = "pending"
+    active      = "active"
+    inactive    = "inactive"
+    error       = "error"
     maintenance = "maintenance"
 
 
 class SessionStatus(str, enum.Enum):
-    active = "active"
-    expired = "expired"
+    active     = "active"
+    expired    = "expired"
     logged_out = "logged_out"
 
 
 class Sensor(Base):
     __tablename__ = "sensors"
-    sensor_id = Column(Integer, primary_key=True, index=True)
-    tenant_id = Column(Integer, nullable=False, index=True)
-    user_id = Column(Integer, nullable=False, index=True)
-    sensor_name = Column(String(100), nullable=False)
-    sensor_type = Column(String(50), nullable=False)
-    location = Column(String(255))
+    sensor_id      = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), index=True)
+    tenant_id      = Column(Integer, nullable=False, index=True)
+    user_id        = Column(Integer, nullable=False, index=True)
+    sensor_name    = Column(String(100), nullable=False)
+    sensor_type    = Column(String(50), nullable=False)
+    location       = Column(String(255))
     sensor_metadata = Column(JSON, nullable=True)
-    mqtt_token = Column(String(36), nullable=False, unique=True)
-    message_count = Column(Integer, default=0, nullable=False)
-    status = Column(Enum(SensorStatus), nullable=False, default=SensorStatus.active)
+    mqtt_token     = Column(String(36), nullable=False, unique=True)
+    message_count  = Column(Integer, default=0, nullable=False)
+    status         = Column(Enum(SensorStatus), nullable=False, default=SensorStatus.pending)
     last_message_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime, onupdate=func.now())
+    created_at     = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at     = Column(DateTime, onupdate=func.now())
+
+    audit_logs = relationship("SensorAuditLog", back_populates="sensor", passive_deletes=True)
 
 
-# Read-only references — auth service owns these tables
+class SensorAuditLog(Base):
+    __tablename__ = "sensor_audit_logs"
+    id           = Column(Integer, primary_key=True, index=True)
+    tenant_id    = Column(Integer, nullable=False, index=True)
+    sensor_id    = Column(String(36), ForeignKey("sensors.sensor_id", ondelete="SET NULL"), nullable=True, index=True)
+    sensor_name  = Column(String(100), nullable=False)   # snapshot at time of action
+    action       = Column(String(20), nullable=False)    # "created" | "renamed" | "deleted" | "status_changed"
+    performed_by = Column(Integer, nullable=False)        # user_id
+    details      = Column(JSON, nullable=True)            # e.g. {"old_name": "...", "new_name": "..."}
+    created_at   = Column(DateTime, server_default=func.now(), nullable=False)
+
+    sensor = relationship("Sensor", back_populates="audit_logs")
+
+
+# ── Read-only references — auth service owns these tables ─────────────────────
+
 class User(Base):
     __tablename__ = "users"
-    user_id = Column(Integer, primary_key=True, index=True)
-    tenant_id = Column(Integer, nullable=False, index=True)
-    email = Column(String(255), nullable=False)
+    user_id      = Column(Integer, primary_key=True, index=True)
+    tenant_id    = Column(Integer, nullable=False, index=True)
+    email        = Column(String(255), nullable=False)
     password_hash = Column(String(255), nullable=False)
-    status = Column(String(20), nullable=False)
+    status       = Column(String(20), nullable=False)
 
 
 class Session(Base):
     __tablename__ = "sessions"
     session_id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.user_id"), nullable=False, index=True)
-    tenant_id = Column(Integer, nullable=False, index=True)
-    token = Column(String(500), nullable=False, index=True)
+    user_id    = Column(Integer, ForeignKey("users.user_id"), nullable=False, index=True)
+    tenant_id  = Column(Integer, nullable=False, index=True)
+    token      = Column(String(500), nullable=False, index=True)
     last_active = Column(DateTime, server_default=func.now(), nullable=False)
     expires_at = Column(DateTime, nullable=False)
-    status = Column(Enum(SessionStatus), nullable=False, default=SessionStatus.active)
+    status     = Column(Enum(SessionStatus), nullable=False, default=SessionStatus.active)
 
 
 class Role(Base):
     __tablename__ = "roles"
-    role_id = Column(Integer, primary_key=True, index=True)
+    role_id   = Column(Integer, primary_key=True, index=True)
     tenant_id = Column(Integer, nullable=False, index=True)
     role_name = Column(String(50), nullable=False)
 
