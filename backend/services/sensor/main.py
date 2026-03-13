@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, status, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 from typing import List
@@ -16,6 +17,65 @@ from configs import get_db, settings, Base, engine, ALLOWED_ORIGINS
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+
+    # ── Idempotent schema migrations ──────────────────────────────────────────
+    with engine.connect() as conn:
+        # 1. Add last_message_at column
+        conn.execute(text(
+            "ALTER TABLE sensors ADD COLUMN IF NOT EXISTS last_message_at TIMESTAMP NULL"
+        ))
+
+        # 2. Migrate sensor_id from integer PK to UUID VARCHAR(36)
+        conn.execute(text("""
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name='sensors'
+                      AND column_name='sensor_id'
+                      AND data_type='integer'
+                ) THEN
+                    ALTER TABLE sensors ADD COLUMN new_sensor_id VARCHAR(36);
+                    UPDATE sensors SET new_sensor_id = gen_random_uuid()::text;
+                    ALTER TABLE sensors ALTER COLUMN new_sensor_id SET NOT NULL;
+                    ALTER TABLE sensors DROP CONSTRAINT sensors_pkey;
+                    DROP INDEX IF EXISTS ix_sensors_sensor_id;
+                    ALTER TABLE sensors DROP COLUMN sensor_id;
+                    ALTER TABLE sensors RENAME COLUMN new_sensor_id TO sensor_id;
+                    ALTER TABLE sensors ADD PRIMARY KEY (sensor_id);
+                    CREATE INDEX ix_sensors_sensor_id ON sensors(sensor_id);
+                END IF;
+            END $$;
+        """))
+
+        # 3. Add pending and error to sensorstatus enum
+        conn.execute(text("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_enum
+                    WHERE enumlabel = 'pending'
+                      AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'sensorstatus')
+                ) THEN
+                    ALTER TYPE sensorstatus ADD VALUE 'pending';
+                END IF;
+            END $$;
+        """))
+        conn.execute(text("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_enum
+                    WHERE enumlabel = 'error'
+                      AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'sensorstatus')
+                ) THEN
+                    ALTER TYPE sensorstatus ADD VALUE 'error';
+                END IF;
+            END $$;
+        """))
+
+        conn.commit()
+
     yield
 
 
@@ -78,7 +138,7 @@ async def notify_sensor_delta(tenant_id: int, delta: int) -> None:
                 json={"tenant_id": tenant_id, "delta": delta},
             )
     except httpx.RequestError:
-        pass  # Non-critical; billing will reconcile
+        pass
 
 
 async def notify_message_increment(tenant_id: int, increment: int) -> None:
@@ -118,36 +178,44 @@ async def onboard_sensor(
 ):
     if current_user.tenant_id != sensor.tenant_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized for this tenant")
-
     billing_active = await check_billing_active(sensor.tenant_id)
     if not billing_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Active billing required to onboard sensor",
         )
-
     db_sensor = crud.create_sensor(db, sensor, current_user.user_id)
     await notify_sensor_delta(sensor.tenant_id, delta=1)
     await sync_iot_devices(sensor.tenant_id, db)
     return db_sensor
 
 
-@app.get("/sensors/", response_model=List[schemas.SensorResponse])
+@app.get("/sensors/audit/", response_model=schemas.SensorAuditPage)
+async def list_sensor_audit(
+    page: int = Query(default=1, ge=1),
+    per_page: int = Query(default=20, ge=5, le=100),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return crud.get_audit_logs(db, current_user.tenant_id, page, per_page)
+
+
+@app.get("/sensors/", response_model=schemas.SensorPage)
 async def list_sensors(
     tenant_id: int,
-    skip: int = Query(default=0, ge=0, description="Number of records to skip"),
-    limit: int = Query(default=10, ge=1, le=100, description="Maximum records to return"),
+    page: int = Query(default=1, ge=1),
+    per_page: int = Query(default=10, ge=1, le=100),
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     if current_user.tenant_id != tenant_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized for this tenant")
-    return crud.get_sensors_by_tenant(db, tenant_id, skip=skip, limit=limit)
+    return crud.get_sensors_paginated(db, tenant_id, page, per_page)
 
 
 @app.get("/sensors/{sensor_id}", response_model=schemas.SensorResponse)
 async def get_sensor(
-    sensor_id: int,
+    sensor_id: str,
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -159,35 +227,58 @@ async def get_sensor(
     return sensor
 
 
-@app.delete("/sensors/{sensor_id}", response_model=schemas.SensorResponse)
-async def delete_sensor(
-    sensor_id: int,
+@app.patch("/sensors/{sensor_id}/rename", response_model=schemas.SensorResponse)
+async def rename_sensor(
+    sensor_id: str,
+    body: schemas.SensorRenameRequest,
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     sensor = crud.get_sensor(db, sensor_id)
     if not sensor:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sensor not found")
+    if sensor.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+    if not body.sensor_name.strip():
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Name cannot be empty")
+    return crud.rename_sensor(db, sensor_id, body.sensor_name.strip(), current_user.user_id)
 
-    # Cross-tenant check: sensor must belong to the current user's tenant
+
+@app.patch("/sensors/{sensor_id}/status", response_model=schemas.SensorResponse)
+async def update_sensor_status(
+    sensor_id: str,
+    body: schemas.SensorStatusUpdateRequest,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    sensor = crud.get_sensor(db, sensor_id)
+    if not sensor:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sensor not found")
+    if sensor.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+    return crud.update_sensor_status(db, sensor_id, body.status, current_user.user_id)
+
+
+@app.delete("/sensors/{sensor_id}", response_model=schemas.SensorResponse)
+async def delete_sensor(
+    sensor_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    sensor = crud.get_sensor(db, sensor_id)
+    if not sensor:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sensor not found")
     if sensor.tenant_id != current_user.tenant_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
 
     user_role = crud.get_user_role(db, current_user.user_id, current_user.tenant_id)
-
-    # Viewers are never allowed to delete
     if user_role == "viewer":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Viewers cannot delete sensors",
-        )
-
-    # Non-admins can only delete their own sensors
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Viewers cannot delete sensors")
     if user_role != "admin" and sensor.user_id != current_user.user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
 
     tenant_id = sensor.tenant_id
-    deleted = crud.delete_sensor(db, sensor_id)
+    deleted = crud.delete_sensor(db, sensor_id, current_user.user_id)
     await notify_sensor_delta(tenant_id, delta=-1)
     await sync_iot_devices(tenant_id, db)
     return deleted
@@ -195,16 +286,15 @@ async def delete_sensor(
 
 @app.get("/sensors/{sensor_id}/data", response_model=schemas.SensorDataResponse)
 async def get_sensor_data(
-    sensor_id: int,
+    sensor_id: str,
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     sensor = crud.get_sensor(db, sensor_id)
     if not sensor:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sensor not found")
-    if sensor.user_id != current_user.user_id or sensor.tenant_id != current_user.tenant_id:
+    if sensor.tenant_id != current_user.tenant_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
-
     try:
         data = crud.get_sensor_data(sensor_id, sensor.tenant_id)
     except trino.exceptions.DatabaseError:
@@ -217,7 +307,7 @@ async def get_sensor_data(
 
 @app.post("/sensors/{sensor_id}/messages", response_model=schemas.SensorResponse)
 async def update_sensor_messages(
-    sensor_id: int,
+    sensor_id: str,
     body: schemas.MessageIncrementRequest,
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -225,9 +315,8 @@ async def update_sensor_messages(
     sensor = crud.get_sensor(db, sensor_id)
     if not sensor:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sensor not found")
-    if sensor.user_id != current_user.user_id or sensor.tenant_id != current_user.tenant_id:
+    if sensor.tenant_id != current_user.tenant_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
-
     updated = crud.increment_sensor_messages(db, sensor_id, body.message_increment)
     await notify_message_increment(sensor.tenant_id, body.message_increment)
     return updated

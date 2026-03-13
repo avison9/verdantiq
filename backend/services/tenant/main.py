@@ -36,6 +36,21 @@ async def lifespan(app: FastAPI):
                 END IF;
             END $$;
         """))
+        # Migrate billing_transactions.sensor_id from integer to UUID (VARCHAR 36)
+        conn.execute(text("""
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name='billing_transactions'
+                      AND column_name='sensor_id'
+                      AND data_type='integer'
+                ) THEN
+                    ALTER TABLE billing_transactions
+                        ALTER COLUMN sensor_id TYPE VARCHAR(36) USING sensor_id::VARCHAR;
+                END IF;
+            END $$;
+        """))
         conn.commit()
     yield
 

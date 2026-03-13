@@ -121,7 +121,7 @@ class Transaction(Base):
     payment_method = Column(String, nullable=True)
     card_last4 = Column(String(4), nullable=True)
     card_brand = Column(String(20), nullable=True)
-    sensor_id = Column(Integer, nullable=True)
+    sensor_id = Column(String(36), nullable=True)
     sensor_name = Column(String, nullable=True)
     usage_period = Column(String, nullable=True)
     data_points = Column(Integer, nullable=True)

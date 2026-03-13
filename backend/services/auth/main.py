@@ -9,11 +9,15 @@ import schemas
 import crud
 from authenticate import verify_password, create_session, expire_session, decode_access_token
 from configs import get_db, Base, engine, ALLOWED_ORIGINS
+from sqlalchemy import text
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    # Idempotent migrations — add new columns here; IF NOT EXISTS makes them safe to re-run
+    with engine.connect() as conn:
+        conn.commit()
     yield
 
 
