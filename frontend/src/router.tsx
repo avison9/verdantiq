@@ -6,6 +6,7 @@ import MissionVision from "./pages/marketing/MissionVision";
 import ContactUs from "./pages/marketing/ContactUs";
 import Pricing from "./pages/marketing/Pricing";
 import Dashboard from "./pages/Dashboard";
+import OnboardSensor from "./pages/sensors/OnboardSensor";
 import Login from "./pages/authentication/Login";
 import Register from "./pages/authentication/Register";
 import ForgotPassword from "./pages/authentication/ForgotPassword";
@@ -33,9 +34,10 @@ export const router = createBrowserRouter([
   {
     element: <PrivateRoute />,
     children: [
-      { path: "/dashboard",      element: <Dashboard /> },
-      { path: "/profile/user",   element: <UserProfile /> },
-      { path: "/profile/tenant", element: <TenantProfile /> },
+      { path: "/dashboard",        element: <Dashboard /> },
+      { path: "/sensors/onboard",  element: <OnboardSensor /> },
+      { path: "/profile/user",     element: <UserProfile /> },
+      { path: "/profile/tenant",   element: <TenantProfile /> },
     ],
   },
 

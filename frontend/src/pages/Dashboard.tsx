@@ -82,7 +82,7 @@ const Dashboard = () => {
         <div>
           <p className="text-sm text-gray-500">{greeting()},</p>
           <h1 className="text-lg font-semibold text-gray-800">
-            {me ? `${me.first_name} ${me.last_name}` : "—"}
+            {me ? me.first_name : "—"}
           </h1>
         </div>
         <div className="flex items-center gap-4">
@@ -142,11 +142,21 @@ const Dashboard = () => {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
           <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
             <h2 className="text-base font-semibold text-gray-800">Sensors</h2>
-            {errorSensors > 0 && (
-              <span className="text-xs bg-red-100 text-red-600 font-medium px-2 py-0.5 rounded-full">
-                {errorSensors} error{errorSensors > 1 ? "s" : ""}
-              </span>
-            )}
+            <div className="flex items-center gap-3">
+              {errorSensors > 0 && (
+                <span className="text-xs bg-red-100 text-red-600 font-medium px-2 py-0.5 rounded-full">
+                  {errorSensors} error{errorSensors > 1 ? "s" : ""}
+                </span>
+              )}
+              <Link
+                to="/sensors/onboard"
+                className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                title="Onboard a new sensor"
+              >
+                <span className="text-base leading-none">+</span>
+                <span>Add sensor</span>
+              </Link>
+            </div>
           </div>
 
           {sensorsLoading ? (
@@ -154,9 +164,12 @@ const Dashboard = () => {
           ) : sensors.length === 0 ? (
             <div className="px-6 py-10 text-center">
               <p className="text-gray-400 text-sm">No sensors registered yet.</p>
-              <p className="text-gray-400 text-xs mt-1">
-                Use the API to onboard your first IoT device.
-              </p>
+              <Link
+                to="/sensors/onboard"
+                className="mt-3 inline-block text-xs text-emerald-600 hover:text-emerald-700 font-medium"
+              >
+                + Onboard your first sensor
+              </Link>
             </div>
           ) : (
             <div className="overflow-x-auto">
