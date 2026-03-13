@@ -543,3 +543,283 @@ async def test_sync_iot_devices_request_error(db_session, mock_user):
         mock_client_cls.return_value.patch = _AsyncMock(side_effect=httpx.RequestError("fail"))
         from main import sync_iot_devices
         await sync_iot_devices(mock_user.tenant_id, db_session)  # should not raise
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# New feature tests
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Migration / schema ────────────────────────────────────────────────────────
+
+def test_required_tables_exist(db_session):
+    """All sensor-owned tables must be present after create_all."""
+    result = db_session.execute(text(
+        "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
+    ))
+    tables = {row[0] for row in result}
+    for required in ("sensors", "sensor_audit_logs", "sensor_connection_events"):
+        assert required in tables, f"Missing table: {required}"
+
+
+def test_sensors_table_has_required_columns(db_session):
+    """sensors table must have UUID PK and all new columns."""
+    result = db_session.execute(text(
+        "SELECT column_name, data_type FROM information_schema.columns "
+        "WHERE table_name = 'sensors'"
+    ))
+    cols = {row[0]: row[1] for row in result}
+    assert cols.get("sensor_id") in ("character varying",), "sensor_id must be VARCHAR"
+    assert "last_message_at" in cols
+    assert "sensor_metadata" in cols
+
+
+# ── Sensor metadata fields ────────────────────────────────────────────────────
+
+def test_onboard_sensor_stores_hardware_metadata(client, mock_user, monkeypatch):
+    """manufacturer, model, serial_number, operating_system, power_type go into sensor_metadata."""
+    monkeypatch.setattr(_main_module, "check_billing_active", AsyncMock(return_value=True))
+    payload = {
+        "tenant_id": mock_user.tenant_id,
+        "sensor_name": "TempSensor",
+        "sensor_type": "temperature",
+        "manufacturer": "Bosch",
+        "model": "BME280",
+        "serial_number": "SN-001",
+        "operating_system": "FreeRTOS",
+        "power_type": "dc",
+    }
+    data = client.post("/sensors/", json=payload).json()
+    meta = data["sensor_metadata"]
+    assert meta["manufacturer"] == "Bosch"
+    assert meta["model"] == "BME280"
+    assert meta["serial_number"] == "SN-001"
+    assert meta["operating_system"] == "FreeRTOS"
+    assert meta["power_type"] == "dc"
+
+
+def test_onboard_sensor_merges_metadata_and_hardware_fields(client, mock_user, monkeypatch):
+    """Explicit lat/lon in sensor_metadata and hardware fields are merged together."""
+    monkeypatch.setattr(_main_module, "check_billing_active", AsyncMock(return_value=True))
+    payload = {
+        "tenant_id": mock_user.tenant_id,
+        "sensor_name": "GeoSensor",
+        "sensor_type": "soil",
+        "sensor_metadata": {"latitude": 7.3775, "longitude": 3.9470},
+        "manufacturer": "Sensirion",
+    }
+    data = client.post("/sensors/", json=payload).json()
+    meta = data["sensor_metadata"]
+    assert meta["latitude"] == 7.3775
+    assert meta["longitude"] == 3.9470
+    assert meta["manufacturer"] == "Sensirion"
+
+
+# ── Connection events ─────────────────────────────────────────────────────────
+
+def test_onboard_sensor_creates_registered_event(client, sensor_payload, monkeypatch, db_session):
+    """Creating a sensor must produce a sensor_registered connection event."""
+    sensor = _create_sensor(client, sensor_payload, monkeypatch)
+    events = db_session.query(models.SensorConnectionEvent).filter(
+        models.SensorConnectionEvent.sensor_id == sensor["sensor_id"]
+    ).all()
+    assert len(events) == 1
+    assert events[0].event_type == "sensor_registered"
+    assert events[0].status == "success"
+
+
+def test_first_message_creates_data_received_event(client, sensor_payload, monkeypatch, db_session):
+    """First message increment must create a data_received connection event and activate sensor."""
+    sensor = _create_sensor(client, sensor_payload, monkeypatch)
+    sensor_id = sensor["sensor_id"]
+
+    resp = client.post(f"/sensors/{sensor_id}/messages", json={"message_increment": 1})
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "active"
+
+    events = db_session.query(models.SensorConnectionEvent).filter(
+        models.SensorConnectionEvent.sensor_id == sensor_id,
+        models.SensorConnectionEvent.event_type == "data_received",
+    ).all()
+    assert len(events) == 1
+    assert events[0].status == "success"
+
+
+def test_subsequent_messages_do_not_duplicate_data_received_event(client, sensor_payload, monkeypatch, db_session):
+    """Only the first message should create a data_received event; subsequent increments do not."""
+    sensor = _create_sensor(client, sensor_payload, monkeypatch)
+    sensor_id = sensor["sensor_id"]
+
+    client.post(f"/sensors/{sensor_id}/messages", json={"message_increment": 1})
+    client.post(f"/sensors/{sensor_id}/messages", json={"message_increment": 5})
+    client.post(f"/sensors/{sensor_id}/messages", json={"message_increment": 10})
+
+    events = db_session.query(models.SensorConnectionEvent).filter(
+        models.SensorConnectionEvent.sensor_id == sensor_id,
+        models.SensorConnectionEvent.event_type == "data_received",
+    ).all()
+    assert len(events) == 1
+
+
+def test_initiate_connection_endpoint(client, sensor_payload, monkeypatch, db_session):
+    """POST /sensors/{id}/connect creates a connection_initiated event."""
+    sensor = _create_sensor(client, sensor_payload, monkeypatch)
+    sensor_id = sensor["sensor_id"]
+
+    resp = client.post(f"/sensors/{sensor_id}/connect")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["event_type"] == "connection_initiated"
+    assert data["sensor_id"] == sensor_id
+    assert data["status"] == "success"
+
+    # Verify persisted in DB
+    events = db_session.query(models.SensorConnectionEvent).filter(
+        models.SensorConnectionEvent.sensor_id == sensor_id,
+        models.SensorConnectionEvent.event_type == "connection_initiated",
+    ).all()
+    assert len(events) == 1
+
+
+def test_initiate_connection_not_found(client, monkeypatch):
+    """POST /sensors/{id}/connect on non-existent sensor returns 404."""
+    resp = client.post("/sensors/nonexistent-id/connect")
+    assert resp.status_code == 404
+
+
+def test_initiate_connection_cross_tenant_blocked(client, db_session, other_user, monkeypatch):
+    """A sensor belonging to another tenant must return 403 on connect."""
+    other_sensor = models.Sensor(
+        tenant_id=other_user.tenant_id,
+        user_id=other_user.user_id,
+        sensor_name="OtherSensor",
+        sensor_type="temp",
+        mqtt_token=str(uuid.uuid4()),
+        message_count=0,
+        status=models.SensorStatus.pending,
+    )
+    db_session.add(other_sensor)
+    db_session.commit()
+    db_session.refresh(other_sensor)
+
+    resp = client.post(f"/sensors/{other_sensor.sensor_id}/connect")
+    assert resp.status_code == 403
+
+
+def test_get_connection_events(client, sensor_payload, monkeypatch):
+    """GET /sensors/{id}/connection-events returns paginated events."""
+    sensor = _create_sensor(client, sensor_payload, monkeypatch)
+    sensor_id = sensor["sensor_id"]
+
+    # Trigger a few events
+    client.post(f"/sensors/{sensor_id}/connect")
+    client.post(f"/sensors/{sensor_id}/messages", json={"message_increment": 1})
+
+    resp = client.get(f"/sensors/{sensor_id}/connection-events?page=1&per_page=10")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "items" in data
+    assert data["total"] >= 3  # sensor_registered + connection_initiated + data_received
+    types = [e["event_type"] for e in data["items"]]
+    assert "sensor_registered" in types
+    assert "connection_initiated" in types
+    assert "data_received" in types
+
+
+def test_get_connection_events_cross_tenant_blocked(client, db_session, other_user):
+    """Connection events for another tenant's sensor must return 403."""
+    other_sensor = models.Sensor(
+        tenant_id=other_user.tenant_id,
+        user_id=other_user.user_id,
+        sensor_name="OtherSensor",
+        sensor_type="temp",
+        mqtt_token=str(uuid.uuid4()),
+        message_count=0,
+        status=models.SensorStatus.pending,
+    )
+    db_session.add(other_sensor)
+    db_session.commit()
+    db_session.refresh(other_sensor)
+
+    resp = client.get(f"/sensors/{other_sensor.sensor_id}/connection-events")
+    assert resp.status_code == 403
+
+
+def test_get_connection_events_pagination(client, sensor_payload, monkeypatch, db_session):
+    """Connection events endpoint respects per_page and page parameters."""
+    sensor = _create_sensor(client, sensor_payload, monkeypatch)
+    sensor_id = sensor["sensor_id"]
+
+    # Create additional events via connect calls
+    for _ in range(7):
+        client.post(f"/sensors/{sensor_id}/connect")
+
+    r1 = client.get(f"/sensors/{sensor_id}/connection-events?page=1&per_page=5")
+    assert r1.status_code == 200
+    assert len(r1.json()["items"]) == 5
+
+    r2 = client.get(f"/sensors/{sensor_id}/connection-events?page=2&per_page=5")
+    assert r2.status_code == 200
+    assert len(r2.json()["items"]) >= 3  # 1 registered + 7 connect = 8 total; page 2 has 3
+
+
+# ── Audit log with user names ─────────────────────────────────────────────────
+
+def test_audit_log_returns_performed_by_name(client, db_session, mock_user, sensor_payload, monkeypatch):
+    """Audit log entries must include performed_by_name resolved from the users table."""
+    # Give mock_user a first_name
+    mock_user.first_name = "Alice"
+    db_session.add(mock_user)
+    db_session.commit()
+
+    _create_sensor(client, sensor_payload, monkeypatch)
+
+    resp = client.get("/sensors/audit/?page=1&per_page=10")
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert len(items) >= 1
+    assert items[0]["performed_by_name"] == "Alice"
+
+
+def test_audit_log_falls_back_to_email_prefix_when_no_first_name(client, db_session, mock_user, sensor_payload, monkeypatch):
+    """When first_name is NULL, performed_by_name falls back to the email prefix."""
+    mock_user.first_name = None
+    db_session.add(mock_user)
+    db_session.commit()
+
+    _create_sensor(client, sensor_payload, monkeypatch)
+
+    resp = client.get("/sensors/audit/?page=1&per_page=10")
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert items[0]["performed_by_name"] == "test"  # email is test@example.com
+
+
+def test_audit_log_records_all_actions(client, sensor_payload, monkeypatch, db_session):
+    """created, renamed, status_changed, and deleted actions all appear in the audit log."""
+    sensor = _create_sensor(client, sensor_payload, monkeypatch)
+    sensor_id = sensor["sensor_id"]
+
+    client.patch(f"/sensors/{sensor_id}/rename", json={"sensor_name": "Renamed"})
+    client.patch(f"/sensors/{sensor_id}/status", json={"status": "inactive"})
+    client.delete(f"/sensors/{sensor_id}")
+
+    resp = client.get("/sensors/audit/?page=1&per_page=20")
+    actions = {item["action"] for item in resp.json()["items"]}
+    assert "created" in actions
+    assert "renamed" in actions
+    assert "status_changed" in actions
+    assert "deleted" in actions
+
+
+def test_audit_log_preserves_sensor_name_after_deletion(client, sensor_payload, monkeypatch):
+    """After a sensor is deleted, its audit entries still have sensor_name (snapshot)."""
+    sensor = _create_sensor(client, sensor_payload, monkeypatch)
+    original_name = sensor["sensor_name"]
+    sensor_id = sensor["sensor_id"]
+
+    client.delete(f"/sensors/{sensor_id}")
+
+    resp = client.get("/sensors/audit/?page=1&per_page=10")
+    items = resp.json()["items"]
+    names = {item["sensor_name"] for item in items}
+    assert original_name in names

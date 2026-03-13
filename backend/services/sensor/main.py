@@ -77,6 +77,14 @@ async def lifespan(app: FastAPI):
         conn.execute(text(
             "ALTER TABLE sensors ADD COLUMN IF NOT EXISTS last_message_at TIMESTAMP NULL"
         ))
+        # 4. Add first_name/last_name to users if missing (auth service owns the table;
+        #    sensor service reads it for audit log display names)
+        conn.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name VARCHAR(50)"
+        ))
+        conn.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name VARCHAR(50)"
+        ))
         conn.commit()
 
     yield

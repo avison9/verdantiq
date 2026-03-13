@@ -15,11 +15,11 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
   );
 }
 
-// ── Card wrapper (square, scrollable content) ─────────────────────────────────
+// ── Card wrapper ───────────────────────────────────────────────────────────────
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col aspect-square overflow-hidden">
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col h-full overflow-hidden">
       <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3 shrink-0">{title}</p>
       <div className="flex-1 overflow-y-auto space-y-0 pr-0.5
                       [&::-webkit-scrollbar]:w-1
@@ -49,7 +49,7 @@ function Terminal() {
   useEffect(() => { bottomRef.current?.scrollIntoView(); }, []);
 
   return (
-    <div className="bg-gray-950 rounded-2xl border border-gray-800 overflow-hidden flex flex-col aspect-square">
+    <div className="bg-gray-950 rounded-2xl border border-gray-800 overflow-hidden flex flex-col h-full">
       <div className="flex items-center gap-1.5 px-4 py-2.5 bg-gray-900 border-b border-gray-800 shrink-0">
         <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
         <span className="w-2.5 h-2.5 rounded-full bg-yellow-400" />
@@ -116,6 +116,8 @@ const SensorDetail = () => {
 
   const dataStatus = sensor?.status === "active" ? "Online" : "Offline";
 
+  const gps = latitude && longitude ? `${latitude}, ${longitude}` : null;
+
   return (
     <div className="px-6 py-8">
       {/* Back */}
@@ -153,8 +155,8 @@ const SensorDetail = () => {
             </span>
           </div>
 
-          {/* ── Row 1: 3 square cards ── */}
-          <div className="grid grid-cols-3 gap-4">
+          {/* ── 6 cards in one grid so rows match height ── */}
+          <div className="grid grid-cols-3 gap-4" style={{ gridAutoRows: "1fr" }}>
 
             {/* Card 1 — Sensor Info */}
             <Card title="Sensor Info">
@@ -197,17 +199,14 @@ const SensorDetail = () => {
                 <DetailRow label="Battery" value={battery ? `${battery}%` : <Nil />} />
               )}
               <DetailRow label="Memory"    value={memory ?? <Nil />} />
+              <DetailRow label="GPS"       value={gps ?? <Nil />} />
             </Card>
-          </div>
-
-          {/* ── Row 2: Terminal + Analytics placeholder + GPS placeholder ── */}
-          <div className="grid grid-cols-3 gap-4">
 
             {/* Card 4 — Terminal */}
             <Terminal />
 
             {/* Card 5 — Analytics placeholder */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col aspect-square">
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col h-full">
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3 shrink-0">Analytics</p>
               <div className="flex-1 flex items-center justify-center">
                 <div className="text-center">
@@ -223,46 +222,23 @@ const SensorDetail = () => {
               </div>
             </div>
 
-            {/* Card 6 — GPS */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col aspect-square">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3 shrink-0">GPS Location</p>
-              {latitude && longitude ? (
-                <div className="flex-1 flex flex-col justify-between">
-                  <div className="space-y-0">
-                    <DetailRow label="Latitude"  value={latitude} />
-                    <DetailRow label="Longitude" value={longitude} />
+            {/* Card 6 — Placeholder */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col h-full">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3 shrink-0">Map View</p>
+              <div className="flex-1 flex items-center justify-center">
+                <div className="text-center">
+                  <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-2">
+                    <svg className="w-5 h-5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                        d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                    </svg>
                   </div>
-                  <div className="flex-1 flex items-center justify-center mt-3">
-                    <div className="text-center">
-                      <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-2">
-                        <svg className="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                            d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                            d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                      </div>
-                      <p className="text-xs text-gray-300">Map view coming soon</p>
-                    </div>
-                  </div>
+                  <p className="text-xs text-gray-400">Map view coming soon</p>
+                  <p className="text-xs text-gray-300 mt-0.5">Geographic sensor tracking</p>
                 </div>
-              ) : (
-                <div className="flex-1 flex items-center justify-center">
-                  <div className="text-center">
-                    <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-2">
-                      <svg className="w-5 h-5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                          d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                          d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                    </div>
-                    <p className="text-xs text-gray-400">No GPS data</p>
-                    <p className="text-xs text-gray-300 mt-0.5">Add coordinates during setup</p>
-                  </div>
-                </div>
-              )}
+              </div>
             </div>
+
           </div>
         </div>
       )}
