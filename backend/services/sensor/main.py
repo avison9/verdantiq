@@ -16,39 +16,9 @@ from configs import get_db, settings, Base, engine, ALLOWED_ORIGINS
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    Base.metadata.create_all(bind=engine)
-
-    # ── Idempotent schema migrations ──────────────────────────────────────────
+    # ── Pre-create_all migrations (must run before create_all so FK types match) ──
     with engine.connect() as conn:
-        # 1. Add last_message_at column
-        conn.execute(text(
-            "ALTER TABLE sensors ADD COLUMN IF NOT EXISTS last_message_at TIMESTAMP NULL"
-        ))
-
-        # 2. Migrate sensor_id from integer PK to UUID VARCHAR(36)
-        conn.execute(text("""
-            DO $$
-            BEGIN
-                IF EXISTS (
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_name='sensors'
-                      AND column_name='sensor_id'
-                      AND data_type='integer'
-                ) THEN
-                    ALTER TABLE sensors ADD COLUMN new_sensor_id VARCHAR(36);
-                    UPDATE sensors SET new_sensor_id = gen_random_uuid()::text;
-                    ALTER TABLE sensors ALTER COLUMN new_sensor_id SET NOT NULL;
-                    ALTER TABLE sensors DROP CONSTRAINT sensors_pkey;
-                    DROP INDEX IF EXISTS ix_sensors_sensor_id;
-                    ALTER TABLE sensors DROP COLUMN sensor_id;
-                    ALTER TABLE sensors RENAME COLUMN new_sensor_id TO sensor_id;
-                    ALTER TABLE sensors ADD PRIMARY KEY (sensor_id);
-                    CREATE INDEX ix_sensors_sensor_id ON sensors(sensor_id);
-                END IF;
-            END $$;
-        """))
-
-        # 3. Add pending and error to sensorstatus enum
+        # 1. Add pending and error to sensorstatus enum (needed before create_all)
         conn.execute(text("""
             DO $$
             BEGIN
@@ -74,6 +44,41 @@ async def lifespan(app: FastAPI):
             END $$;
         """))
 
+        # 2. Migrate sensor_id from integer PK to UUID VARCHAR(36) BEFORE create_all
+        #    so that sensor_audit_logs FK (VARCHAR -> VARCHAR) is consistent.
+        conn.execute(text("""
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name='sensors'
+                      AND column_name='sensor_id'
+                      AND data_type='integer'
+                ) THEN
+                    ALTER TABLE sensors ADD COLUMN new_sensor_id VARCHAR(36);
+                    UPDATE sensors SET new_sensor_id = gen_random_uuid()::text;
+                    ALTER TABLE sensors ALTER COLUMN new_sensor_id SET NOT NULL;
+                    ALTER TABLE sensors DROP CONSTRAINT sensors_pkey;
+                    DROP INDEX IF EXISTS ix_sensors_sensor_id;
+                    ALTER TABLE sensors DROP COLUMN sensor_id;
+                    ALTER TABLE sensors RENAME COLUMN new_sensor_id TO sensor_id;
+                    ALTER TABLE sensors ADD PRIMARY KEY (sensor_id);
+                    CREATE INDEX ix_sensors_sensor_id ON sensors(sensor_id);
+                END IF;
+            END $$;
+        """))
+
+        conn.commit()
+
+    # ── Create any missing tables (sensor_audit_logs, etc.) ───────────────────
+    Base.metadata.create_all(bind=engine)
+
+    # ── Post-create_all migrations ─────────────────────────────────────────────
+    with engine.connect() as conn:
+        # 3. Add last_message_at column if missing
+        conn.execute(text(
+            "ALTER TABLE sensors ADD COLUMN IF NOT EXISTS last_message_at TIMESTAMP NULL"
+        ))
         conn.commit()
 
     yield
