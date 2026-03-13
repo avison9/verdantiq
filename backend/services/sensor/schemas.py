@@ -54,6 +54,7 @@ class SensorAuditLogResponse(BaseModel):
     sensor_name: str
     action: str
     performed_by: int
+    performed_by_name: Optional[str] = None  # first_name of the user
     details: Optional[dict] = None
     created_at: datetime
 
@@ -62,6 +63,27 @@ class SensorAuditLogResponse(BaseModel):
 
 class SensorAuditPage(BaseModel):
     items: List[SensorAuditLogResponse]
+    total: int
+    page: int
+    per_page: int
+    pages: int
+
+
+class SensorConnectionEventResponse(BaseModel):
+    id: int
+    sensor_id: str
+    tenant_id: int
+    event_type: str
+    status: str
+    message: Optional[str] = None
+    details: Optional[dict] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class SensorConnectionEventPage(BaseModel):
+    items: List[SensorConnectionEventResponse]
     total: int
     page: int
     per_page: int

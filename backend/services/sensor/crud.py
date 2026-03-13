@@ -35,6 +35,27 @@ def log_audit(
 
 # ── Sensor CRUD ───────────────────────────────────────────────────────────────
 
+def log_connection_event(
+    db: Session,
+    sensor_id: str,
+    tenant_id: int,
+    event_type: str,
+    status: str = "success",
+    message: Optional[str] = None,
+    details: Optional[dict] = None,
+) -> None:
+    entry = models.SensorConnectionEvent(
+        sensor_id=sensor_id,
+        tenant_id=tenant_id,
+        event_type=event_type,
+        status=status,
+        message=message,
+        details=details,
+    )
+    db.add(entry)
+    # caller is responsible for commit
+
+
 def create_sensor(db: Session, sensor: schemas.SensorCreate, user_id: int) -> models.Sensor:
     sensor_id = str(uuid.uuid4())
     db_sensor = models.Sensor(
@@ -53,6 +74,12 @@ def create_sensor(db: Session, sensor: schemas.SensorCreate, user_id: int) -> mo
         db, sensor.tenant_id, sensor_id, sensor.sensor_name,
         "created", user_id,
         {"sensor_type": sensor.sensor_type, "location": sensor.location},
+    )
+    log_connection_event(
+        db, sensor_id, sensor.tenant_id,
+        event_type="sensor_registered",
+        message=f"Sensor \"{sensor.sensor_name}\" registered on the platform.",
+        details={"sensor_type": sensor.sensor_type, "location": sensor.location},
     )
     db.commit()
     db.refresh(db_sensor)
@@ -145,11 +172,17 @@ def delete_sensor(db: Session, sensor_id: str, performed_by: int) -> Optional[mo
 def increment_sensor_messages(db: Session, sensor_id: str, increment: int) -> Optional[models.Sensor]:
     db_sensor = db.query(models.Sensor).filter(models.Sensor.sensor_id == sensor_id).first()
     if db_sensor:
+        was_pending = db_sensor.status == models.SensorStatus.pending
         db_sensor.message_count += increment
         db_sensor.last_message_at = datetime.now(timezone.utc).replace(tzinfo=None)
-        # First message received → transition from pending to active
-        if db_sensor.status == models.SensorStatus.pending:
+        if was_pending:
             db_sensor.status = models.SensorStatus.active
+            log_connection_event(
+                db, sensor_id, db_sensor.tenant_id,
+                event_type="data_received",
+                message="First data message received. Sensor is now active.",
+                details={"messages": increment},
+            )
         db.commit()
         db.refresh(db_sensor)
     return db_sensor
@@ -166,8 +199,69 @@ def get_audit_logs(
         .order_by(models.SensorAuditLog.created_at.desc())
     )
     total = query.count()
-    items = query.offset((page - 1) * per_page).limit(per_page).all()
+    rows = query.offset((page - 1) * per_page).limit(per_page).all()
+
+    # Resolve user first names in one query
+    user_ids = {r.performed_by for r in rows}
+    users = {
+        u.user_id: (u.first_name or u.email.split("@")[0])
+        for u in db.query(models.User).filter(models.User.user_id.in_(user_ids)).all()
+    }
+
+    items = [
+        schemas.SensorAuditLogResponse(
+            id=r.id,
+            tenant_id=r.tenant_id,
+            sensor_id=r.sensor_id,
+            sensor_name=r.sensor_name,
+            action=r.action,
+            performed_by=r.performed_by,
+            performed_by_name=users.get(r.performed_by),
+            details=r.details,
+            created_at=r.created_at,
+        )
+        for r in rows
+    ]
     return schemas.SensorAuditPage(
+        items=items,
+        total=total,
+        page=page,
+        per_page=per_page,
+        pages=max(1, math.ceil(total / per_page)),
+    )
+
+
+# ── Connection event queries ───────────────────────────────────────────────────
+
+def initiate_connection(
+    db: Session, sensor_id: str, tenant_id: int, user_id: int, sensor_name: str
+) -> models.SensorConnectionEvent:
+    user = db.query(models.User).filter(models.User.user_id == user_id).first()
+    actor = user.first_name if (user and user.first_name) else f"User #{user_id}"
+    log_connection_event(
+        db, sensor_id, tenant_id,
+        event_type="connection_initiated",
+        message=f"Connection setup initiated by {actor}. Configure your device with the token below.",
+        details={"initiated_by": user_id},
+    )
+    db.commit()
+    return db.query(models.SensorConnectionEvent).filter(
+        models.SensorConnectionEvent.sensor_id == sensor_id,
+        models.SensorConnectionEvent.event_type == "connection_initiated",
+    ).order_by(models.SensorConnectionEvent.created_at.desc()).first()
+
+
+def get_connection_events(
+    db: Session, sensor_id: str, page: int = 1, per_page: int = 20
+) -> schemas.SensorConnectionEventPage:
+    query = (
+        db.query(models.SensorConnectionEvent)
+        .filter(models.SensorConnectionEvent.sensor_id == sensor_id)
+        .order_by(models.SensorConnectionEvent.created_at.desc())
+    )
+    total = query.count()
+    items = query.offset((page - 1) * per_page).limit(per_page).all()
+    return schemas.SensorConnectionEventPage(
         items=items,
         total=total,
         page=page,
