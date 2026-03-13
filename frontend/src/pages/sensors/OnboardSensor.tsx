@@ -49,8 +49,8 @@ const OnboardSensor = () => {
 
       toast.success(`Sensor "${form.sensor_name}" onboarded successfully`);
       navigate("/dashboard");
-    } catch (err: any) {
-      const msg = err?.data?.detail ?? "Failed to onboard sensor";
+    } catch (err) {
+      const msg = (err as { data?: { detail?: string } })?.data?.detail ?? "Failed to onboard sensor";
       toast.error(msg);
     }
   };
