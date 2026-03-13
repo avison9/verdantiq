@@ -16,9 +16,7 @@ function greeting() {
 
 const DashboardLayout = () => {
   const [collapsed, setCollapsed] = useState(false);
-  const [openSections, setOpenSections] = useState<Set<MenuSection>>(
-    new Set(["sensors", "billing"]),
-  );
+  const [openSections, setOpenSections] = useState<Set<MenuSection>>(new Set());
 
   const dispatch = useDispatch();
   const navigate = useNavigate();
