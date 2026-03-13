@@ -133,12 +133,15 @@ function EventCard({ event, isLast }: { event: SensorConnectionEvent; isLast: bo
 
         {event.details && Object.keys(event.details).length > 0 && (
           <div className="mt-3 pt-3 border-t border-gray-50 flex flex-wrap gap-3">
-            {Object.entries(event.details).map(([k, v]) => (
-              <span key={k} className="text-xs bg-gray-50 border border-gray-100 rounded-lg px-2 py-1 text-gray-600">
-                <span className="text-gray-400 mr-1">{k}:</span>
-                {String(v)}
-              </span>
-            ))}
+            {Object.entries(event.details).map(([k, v]) => {
+              const label = k === "initiated_by" ? "initiated by" : k.replace(/_/g, " ");
+              return (
+                <span key={k} className="text-xs bg-gray-50 border border-gray-100 rounded-lg px-2 py-1 text-gray-600">
+                  <span className="text-gray-400 mr-1">{label}:</span>
+                  {String(v)}
+                </span>
+              );
+            })}
           </div>
         )}
 
