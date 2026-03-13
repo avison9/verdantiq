@@ -148,7 +148,7 @@ const Transactions = () => {
 
   const transactions = data?.items ?? [];
   const total = data?.total ?? 0;
-  const totalPages = data?.pages ?? Math.ceil(total / perPage) || 1;
+  const totalPages = (data?.pages ?? Math.ceil(total / perPage)) || 1;
   const pageRange = buildPageRange(page, totalPages);
 
   const handlePerPageChange = (v: number) => {
