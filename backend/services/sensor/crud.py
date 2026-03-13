@@ -249,7 +249,7 @@ def initiate_connection(
         db, sensor_id, tenant_id,
         event_type="connection_initiated",
         message=f"Connection setup initiated by {actor}. Configure your device with the token below.",
-        details={"initiated_by": user_id},
+        details={"initiated_by": actor},
     )
     db.commit()
     return db.query(models.SensorConnectionEvent).filter(
