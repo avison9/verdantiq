@@ -129,6 +129,45 @@ def get_sensors_paginated(
     )
 
 
+def update_sensor(
+    db: Session, sensor_id: str, update: schemas.SensorUpdate, performed_by: int
+) -> Optional[models.Sensor]:
+    db_sensor = db.query(models.Sensor).filter(models.Sensor.sensor_id == sensor_id).first()
+    if not db_sensor:
+        return None
+
+    old_name = db_sensor.sensor_name
+
+    if update.sensor_name is not None and update.sensor_name.strip():
+        db_sensor.sensor_name = update.sensor_name.strip()
+    if update.sensor_type is not None and update.sensor_type.strip():
+        db_sensor.sensor_type = update.sensor_type.strip()
+    if update.location is not None:
+        db_sensor.location = update.location.strip() or None
+
+    # Merge hardware fields into existing sensor_metadata
+    meta: dict = dict(db_sensor.sensor_metadata or {})
+    for field in ("manufacturer", "model", "serial_number", "operating_system", "power_type"):
+        val = getattr(update, field, None)
+        if val is not None:
+            if val.strip():
+                meta[field] = val.strip()
+            else:
+                meta.pop(field, None)
+    if update.sensor_metadata is not None:
+        meta.update(update.sensor_metadata)
+    db_sensor.sensor_metadata = meta or None
+
+    log_audit(
+        db, db_sensor.tenant_id, sensor_id, db_sensor.sensor_name,
+        "updated", performed_by,
+        {"old_name": old_name, "new_name": db_sensor.sensor_name},
+    )
+    db.commit()
+    db.refresh(db_sensor)
+    return db_sensor
+
+
 def rename_sensor(
     db: Session, sensor_id: str, sensor_name: str, performed_by: int
 ) -> Optional[models.Sensor]:
