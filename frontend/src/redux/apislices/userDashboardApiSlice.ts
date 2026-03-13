@@ -1,19 +1,49 @@
 import { baseApiSlice } from "./baseSpiSlice";
 import { APIendPoints } from "../../constants/APIendPoints";
 
+export type SensorStatus = "pending" | "active" | "inactive" | "error" | "maintenance";
+
 export interface Sensor {
-  sensor_id: number;
+  sensor_id: string;
   tenant_id: number;
   user_id: number;
   sensor_name: string;
   sensor_type: string;
   location: string | null;
   sensor_metadata: Record<string, unknown> | null;
+  mqtt_token: string;
   message_count: number;
-  status: "active" | "inactive" | "error" | "maintenance";
+  status: SensorStatus;
   last_message_at: string | null;
   created_at: string;
   updated_at: string | null;
+}
+
+export interface SensorPage {
+  items: Sensor[];
+  total: number;
+  page: number;
+  per_page: number;
+  pages: number;
+}
+
+export interface SensorAuditLog {
+  id: number;
+  tenant_id: number;
+  sensor_id: string | null;
+  sensor_name: string;
+  action: string;
+  performed_by: number;
+  details: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface SensorAuditPage {
+  items: SensorAuditLog[];
+  total: number;
+  page: number;
+  per_page: number;
+  pages: number;
 }
 
 export interface Billing {
@@ -41,14 +71,11 @@ export interface SensorCreate {
 export interface BillingTopUp {
   amount: number;
   payment_method: string;
-  // Credit card
   cardholder_name?: string;
   card_number?: string;
   card_expiry?: string;
   card_cvv?: string;
-  // PayPal / Skrill / Revolut
   payer_email?: string;
-  // Wire transfer
   reference?: string;
 }
 
@@ -62,7 +89,7 @@ export interface Transaction {
   payment_method?: string;
   card_last4?: string;
   card_brand?: string;
-  sensor_id?: number;
+  sensor_id?: string;
   sensor_name?: string;
   usage_period?: string;
   data_points?: number;
@@ -80,18 +107,19 @@ export interface TransactionPage {
 
 export const userDashboardApiSlice = baseApiSlice.injectEndpoints({
   endpoints: (builder) => ({
-    getSensors: builder.query<Sensor[], { tenant_id: number; limit?: number }>({
-      query: ({ tenant_id, limit = 100 }) =>
-        `${APIendPoints.sensors}/?tenant_id=${tenant_id}&limit=${limit}`,
+    getSensors: builder.query<SensorPage, { tenant_id: number; page?: number; per_page?: number }>({
+      query: ({ tenant_id, page = 1, per_page = 10 }) =>
+        `${APIendPoints.sensors}/?tenant_id=${tenant_id}&page=${page}&per_page=${per_page}`,
       providesTags: ["Sensor"],
     }),
-    getSensor: builder.query<Sensor, number>({
+    getSensor: builder.query<Sensor, string>({
       query: (sensor_id) => `${APIendPoints.sensors}/${sensor_id}`,
       providesTags: ["Sensor"],
     }),
-    getBilling: builder.query<Billing, void>({
-      query: () => `${APIendPoints.billings}/`,
-      providesTags: ["User", "Billing"],
+    getSensorAudit: builder.query<SensorAuditPage, { page?: number; per_page?: number }>({
+      query: ({ page = 1, per_page = 20 } = {}) =>
+        `${APIendPoints.sensors}/audit/?page=${page}&per_page=${per_page}`,
+      providesTags: ["Sensor"],
     }),
     createSensor: builder.mutation<Sensor, SensorCreate>({
       query: (body) => ({
@@ -100,6 +128,33 @@ export const userDashboardApiSlice = baseApiSlice.injectEndpoints({
         body,
       }),
       invalidatesTags: ["Sensor"],
+    }),
+    renameSensor: builder.mutation<Sensor, { sensor_id: string; sensor_name: string }>({
+      query: ({ sensor_id, sensor_name }) => ({
+        url: `${APIendPoints.sensors}/${sensor_id}/rename`,
+        method: "PATCH",
+        body: { sensor_name },
+      }),
+      invalidatesTags: ["Sensor"],
+    }),
+    updateSensorStatus: builder.mutation<Sensor, { sensor_id: string; status: SensorStatus }>({
+      query: ({ sensor_id, status }) => ({
+        url: `${APIendPoints.sensors}/${sensor_id}/status`,
+        method: "PATCH",
+        body: { status },
+      }),
+      invalidatesTags: ["Sensor"],
+    }),
+    deleteSensor: builder.mutation<Sensor, string>({
+      query: (sensor_id) => ({
+        url: `${APIendPoints.sensors}/${sensor_id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: ["Sensor"],
+    }),
+    getBilling: builder.query<Billing, void>({
+      query: () => `${APIendPoints.billings}/`,
+      providesTags: ["User", "Billing"],
     }),
     topUpBilling: builder.mutation<Billing, BillingTopUp>({
       query: (body) => ({
@@ -120,8 +175,12 @@ export const userDashboardApiSlice = baseApiSlice.injectEndpoints({
 export const {
   useGetSensorsQuery,
   useGetSensorQuery,
+  useGetSensorAuditQuery,
   useGetBillingQuery,
   useCreateSensorMutation,
+  useRenameSensorMutation,
+  useUpdateSensorStatusMutation,
+  useDeleteSensorMutation,
   useTopUpBillingMutation,
   useGetTransactionsQuery,
 } = userDashboardApiSlice;

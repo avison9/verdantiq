@@ -10,6 +10,8 @@ import Dashboard from "./pages/Dashboard";
 import OnboardSensor from "./pages/sensors/OnboardSensor";
 import SensorList from "./pages/sensors/SensorList";
 import SensorDetail from "./pages/sensors/SensorDetail";
+import SensorAudit from "./pages/sensors/SensorAudit";
+import SensorConnections from "./pages/sensors/SensorConnections";
 import SetupBilling from "./pages/billing/SetupBilling";
 import Transactions from "./pages/billing/Transactions";
 import Login from "./pages/authentication/Login";
@@ -45,6 +47,8 @@ export const router = createBrowserRouter([
           { path: "/dashboard",             element: <Dashboard /> },
           { path: "/sensors/onboard",       element: <OnboardSensor /> },
           { path: "/sensors/list",          element: <SensorList /> },
+          { path: "/sensors/connections",   element: <SensorConnections /> },
+          { path: "/sensors/audit",         element: <SensorAudit /> },
           { path: "/sensors/:sensorId",     element: <SensorDetail /> },
           { path: "/billing/setup",         element: <SetupBilling /> },
           { path: "/billing/transactions",  element: <Transactions /> },
