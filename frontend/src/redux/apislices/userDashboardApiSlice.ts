@@ -38,10 +38,16 @@ export interface SensorCreate {
 
 export interface BillingTopUp {
   amount: number;
-  cardholder_name: string;
-  card_number: string;
-  card_expiry: string;
-  card_cvv: string;
+  payment_method: string;
+  // Credit card
+  cardholder_name?: string;
+  card_number?: string;
+  card_expiry?: string;
+  card_cvv?: string;
+  // PayPal / Skrill / Revolut
+  payer_email?: string;
+  // Wire transfer
+  reference?: string;
 }
 
 export interface Transaction {
