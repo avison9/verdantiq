@@ -66,7 +66,7 @@ const SLIDES = [
   },
 ];
 
-const INTERVAL_MS = 20_000;
+const INTERVAL_MS = 5_000;
 
 // ── IoT signal rings (shown on slide 1) ──────────────────────────────────────
 const SignalRings = () => (
