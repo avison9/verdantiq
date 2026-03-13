@@ -21,6 +21,7 @@ export interface Billing {
   frequency: string;
   payment_method: string;
   amount_due: number;
+  balance?: number;
   message_count: number;
   sensor_count: number;
   due_date: string;
@@ -35,6 +36,40 @@ export interface SensorCreate {
   sensor_metadata?: Record<string, unknown>;
 }
 
+export interface BillingTopUp {
+  amount: number;
+  cardholder_name: string;
+  card_number: string;
+  card_expiry: string;
+  card_cvv: string;
+}
+
+export interface Transaction {
+  id: number;
+  billing_id: number;
+  type: "credit" | "debit";
+  amount: number;
+  balance_after: number;
+  description: string;
+  payment_method?: string;
+  card_last4?: string;
+  card_brand?: string;
+  sensor_id?: number;
+  sensor_name?: string;
+  usage_period?: string;
+  data_points?: number;
+  reference?: string;
+  created_at: string;
+}
+
+export interface TransactionPage {
+  items: Transaction[];
+  total: number;
+  page: number;
+  per_page: number;
+  pages: number;
+}
+
 export const userDashboardApiSlice = baseApiSlice.injectEndpoints({
   endpoints: (builder) => ({
     getSensors: builder.query<Sensor[], { tenant_id: number; limit?: number }>({
@@ -44,7 +79,7 @@ export const userDashboardApiSlice = baseApiSlice.injectEndpoints({
     }),
     getBilling: builder.query<Billing, void>({
       query: () => `${APIendPoints.billings}/`,
-      providesTags: ["User"],
+      providesTags: ["User", "Billing"],
     }),
     createSensor: builder.mutation<Sensor, SensorCreate>({
       query: (body) => ({
@@ -54,6 +89,19 @@ export const userDashboardApiSlice = baseApiSlice.injectEndpoints({
       }),
       invalidatesTags: ["Sensor"],
     }),
+    topUpBilling: builder.mutation<Billing, BillingTopUp>({
+      query: (body) => ({
+        url: `${APIendPoints.billingTopup}/`,
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["User", "Billing", "Transaction"],
+    }),
+    getTransactions: builder.query<TransactionPage, { page?: number; per_page?: number }>({
+      query: ({ page = 1, per_page = 20 } = {}) =>
+        `${APIendPoints.billingTransactions}/?page=${page}&per_page=${per_page}`,
+      providesTags: ["Transaction"],
+    }),
   }),
 });
 
@@ -61,4 +109,6 @@ export const {
   useGetSensorsQuery,
   useGetBillingQuery,
   useCreateSensorMutation,
+  useTopUpBillingMutation,
+  useGetTransactionsQuery,
 } = userDashboardApiSlice;

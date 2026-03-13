@@ -14,4 +14,6 @@ export const APIendPoints = {
   sensors: "sensors",
   // Billing
   billings: "billings",
+  billingTopup: "billings/topup",
+  billingTransactions: "billings/transactions",
 };
