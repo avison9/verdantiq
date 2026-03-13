@@ -58,6 +58,13 @@ def log_connection_event(
 
 def create_sensor(db: Session, sensor: schemas.SensorCreate, user_id: int) -> models.Sensor:
     sensor_id = str(uuid.uuid4())
+    # Merge explicit hardware fields into sensor_metadata
+    meta: dict = dict(sensor.sensor_metadata or {})
+    for field in ("manufacturer", "model", "serial_number", "operating_system", "power_type"):
+        val = getattr(sensor, field, None)
+        if val is not None:
+            meta[field] = val
+
     db_sensor = models.Sensor(
         sensor_id=sensor_id,
         tenant_id=sensor.tenant_id,
@@ -65,7 +72,7 @@ def create_sensor(db: Session, sensor: schemas.SensorCreate, user_id: int) -> mo
         sensor_name=sensor.sensor_name,
         sensor_type=sensor.sensor_type,
         location=sensor.location,
-        sensor_metadata=sensor.sensor_metadata,
+        sensor_metadata=meta or None,
         mqtt_token=str(uuid.uuid4()),
         status=models.SensorStatus.pending,
     )

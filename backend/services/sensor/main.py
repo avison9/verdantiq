@@ -18,28 +18,26 @@ from configs import get_db, settings, Base, engine, ALLOWED_ORIGINS
 async def lifespan(app: FastAPI):
     # ── Pre-create_all migrations (must run before create_all so FK types match) ──
     with engine.connect() as conn:
-        # 1. Add pending and error to sensorstatus enum (needed before create_all)
+        # 1. Add pending/error to sensorstatus enum only if the type already exists
+        #    (fresh DBs let create_all build the full enum; existing DBs may need backfill)
         conn.execute(text("""
             DO $$
             BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM pg_enum
-                    WHERE enumlabel = 'pending'
-                      AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'sensorstatus')
-                ) THEN
-                    ALTER TYPE sensorstatus ADD VALUE 'pending';
-                END IF;
-            END $$;
-        """))
-        conn.execute(text("""
-            DO $$
-            BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM pg_enum
-                    WHERE enumlabel = 'error'
-                      AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'sensorstatus')
-                ) THEN
-                    ALTER TYPE sensorstatus ADD VALUE 'error';
+                IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'sensorstatus') THEN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_enum
+                        WHERE enumlabel = 'pending'
+                          AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'sensorstatus')
+                    ) THEN
+                        ALTER TYPE sensorstatus ADD VALUE 'pending';
+                    END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_enum
+                        WHERE enumlabel = 'error'
+                          AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'sensorstatus')
+                    ) THEN
+                        ALTER TYPE sensorstatus ADD VALUE 'error';
+                    END IF;
                 END IF;
             END $$;
         """))

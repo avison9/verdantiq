@@ -11,6 +11,12 @@ class SensorCreate(BaseModel):
     sensor_type: str
     location: Optional[str] = None
     sensor_metadata: Optional[dict] = None
+    # Hardware / identity fields (stored in sensor_metadata)
+    manufacturer: Optional[str] = None
+    model: Optional[str] = None
+    serial_number: Optional[str] = None
+    operating_system: Optional[str] = None
+    power_type: Optional[str] = None   # "ac" | "dc"
 
 
 class SensorResponse(BaseModel):
