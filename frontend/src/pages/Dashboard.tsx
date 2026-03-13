@@ -32,12 +32,14 @@ const Dashboard = () => {
   usePageTitle("Dashboard — VerdantIQ");
 
   const { data: me, isLoading: meLoading } = useGetMeQuery();
-  const { data: sensors = [], isLoading: sensorsLoading } = useGetSensorsQuery(
-    { tenant_id: me?.tenant_id ?? 0 },
+  const { data: sensorsPage, isLoading: sensorsLoading } = useGetSensorsQuery(
+    { tenant_id: me?.tenant_id ?? 0, per_page: 10 },
     { skip: !me },
   );
   const { data: billing } = useGetBillingQuery(undefined, { skip: !me });
 
+  const sensors      = sensorsPage?.items ?? [];
+  const totalSensors = sensorsPage?.total ?? 0;
   const activeSensors = sensors.filter((s) => s.status === "active").length;
   const errorSensors  = sensors.filter((s) => s.status === "error").length;
 
@@ -100,15 +102,15 @@ const Dashboard = () => {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
           label="Total sensors"
-          value={sensorsLoading ? "…" : String(sensors.length)}
+          value={sensorsLoading ? "…" : String(totalSensors)}
           sub="registered devices"
-          color="emerald"
+          color="blue"
         />
         <StatCard
           label="Active sensors"
           value={sensorsLoading ? "…" : String(activeSensors)}
-          sub={`of ${sensors.length} online`}
-          color="blue"
+          sub={`of ${totalSensors} online`}
+          color="emerald"
         />
         <StatCard
           label="Messages processed"
@@ -157,7 +159,7 @@ const Dashboard = () => {
 
         {sensorsLoading ? (
           <div className="px-6 py-10 text-center text-sm text-gray-400">Loading sensors…</div>
-        ) : sensors.length === 0 ? (
+        ) : totalSensors === 0 ? (
           <div className="px-6 py-10 text-center">
             <p className="text-gray-400 text-sm">No sensors registered yet.</p>
             <Link
@@ -181,7 +183,7 @@ const Dashboard = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {sensors.slice(0, 10).map((s) => (
+                {sensors.map((s) => (
                   <tr key={s.sensor_id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-3 font-medium text-gray-800">{s.sensor_name}</td>
                     <td className="px-6 py-3 text-gray-500">
@@ -210,13 +212,13 @@ const Dashboard = () => {
                 ))}
               </tbody>
             </table>
-            {sensors.length > 10 && (
+            {totalSensors > 10 && (
               <div className="px-6 py-3 border-t border-gray-50 text-center">
                 <Link
                   to="/sensors/list"
                   className="text-xs text-emerald-600 hover:text-emerald-700 font-medium"
                 >
-                  View all {sensors.length} sensors →
+                  View all {totalSensors} sensors →
                 </Link>
               </div>
             )}

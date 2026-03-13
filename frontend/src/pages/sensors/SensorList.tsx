@@ -53,6 +53,7 @@ const SensorList = () => {
 
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState<(typeof PER_PAGE_OPTIONS)[number]>(10);
+  const [search, setSearch] = useState("");
 
   // Rename state
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -74,10 +75,20 @@ const SensorList = () => {
     if (renamingId) renameInputRef.current?.focus();
   }, [renamingId]);
 
-  const sensors   = data?.items ?? [];
-  const total     = data?.total ?? 0;
+  const allSensors = data?.items ?? [];
+  const total      = data?.total ?? 0;
   const totalPages = data?.pages ?? 1;
-  const pageRange = buildPageRange(page, totalPages);
+  const pageRange  = buildPageRange(page, totalPages);
+
+  const q = search.trim().toLowerCase();
+  const sensors = q
+    ? allSensors.filter(
+        (s) =>
+          s.sensor_name.toLowerCase().includes(q) ||
+          s.sensor_type.toLowerCase().includes(q) ||
+          (s.location ?? "").toLowerCase().includes(q),
+      )
+    : allSensors;
 
   const startRename = (id: string, currentName: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -127,25 +138,45 @@ const SensorList = () => {
             {isLoading ? "Loading…" : `${total} registered device${total !== 1 ? "s" : ""}`}
           </p>
         </div>
-        <Link
-          to="/sensors/onboard"
-          className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
-        >
-          <span className="text-base leading-none">+</span>
-          <span>Add Sensor</span>
-        </Link>
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Search sensors…"
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+              className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white w-52"
+            />
+          </div>
+          <Link
+            to="/sensors/onboard"
+            className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+          >
+            <span className="text-base leading-none">+</span>
+            <span>Add Sensor</span>
+          </Link>
+        </div>
       </div>
 
       {/* Table card */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
         {isLoading ? (
           <div className="px-6 py-12 text-center text-sm text-gray-400">Loading sensors…</div>
-        ) : sensors.length === 0 && total === 0 ? (
+        ) : sensors.length === 0 ? (
           <div className="px-6 py-12 text-center">
-            <p className="text-gray-400 text-sm">No sensors registered yet.</p>
-            <Link to="/sensors/onboard" className="mt-3 inline-block text-xs text-emerald-600 hover:text-emerald-700 font-medium">
-              + Onboard your first sensor
-            </Link>
+            {q ? (
+              <p className="text-gray-400 text-sm">No sensors match &ldquo;{search}&rdquo;.</p>
+            ) : (
+              <>
+                <p className="text-gray-400 text-sm">No sensors registered yet.</p>
+                <Link to="/sensors/onboard" className="mt-3 inline-block text-xs text-emerald-600 hover:text-emerald-700 font-medium">
+                  + Onboard your first sensor
+                </Link>
+              </>
+            )}
           </div>
         ) : (
           <>
