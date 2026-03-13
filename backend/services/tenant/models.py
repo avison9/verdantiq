@@ -3,6 +3,7 @@ from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from configs import Base
 import enum
+import uuid
 
 
 class TenantStatus(str, enum.Enum):
@@ -39,6 +40,13 @@ class PaymentMethod(str, enum.Enum):
     CREDIT_CARD = "credit_card"
     BANK_TRANSFER = "bank_transfer"
     PAYPAL = "paypal"
+    SKRILL = "skrill"
+    REVOLUT = "revolut"
+
+
+class TransactionType(str, enum.Enum):
+    CREDIT = "credit"
+    DEBIT = "debit"
 
 
 # ─── Read-only references (owned by Auth service) ────────────────────────────
@@ -87,7 +95,8 @@ class Billing(Base):
     tenant_id = Column(Integer, ForeignKey("tenants.tenant_id"), nullable=False)
     status = Column(Enum(BillingStatus), default=BillingStatus.ACTIVE, nullable=False)
     frequency = Column(Enum(BillingFrequency), default=BillingFrequency.MONTHLY, nullable=False)
-    payment_method = Column(Enum(PaymentMethod), nullable=False)
+    payment_method = Column(String(50), nullable=False)
+    balance = Column(Float, default=0.0, nullable=False)
     amount_due = Column(Float, default=0.0)
     message_count = Column(Integer, default=0)
     sensor_count = Column(Integer, default=0)
@@ -98,6 +107,28 @@ class Billing(Base):
 
     tenant = relationship("Tenant", back_populates="billings")
     ml_features = relationship("MLFeatureSubscription", back_populates="billing")
+    transactions = relationship("Transaction", back_populates="billing", order_by="Transaction.created_at.desc()")
+
+
+class Transaction(Base):
+    __tablename__ = "billing_transactions"
+    id = Column(Integer, primary_key=True, index=True)
+    billing_id = Column(Integer, ForeignKey("billings.id"), nullable=False)
+    type = Column(Enum(TransactionType), nullable=False)
+    amount = Column(Float, nullable=False)
+    balance_after = Column(Float, nullable=False)
+    description = Column(String, nullable=False)
+    payment_method = Column(String, nullable=True)
+    card_last4 = Column(String(4), nullable=True)
+    card_brand = Column(String(20), nullable=True)
+    sensor_id = Column(Integer, nullable=True)
+    sensor_name = Column(String, nullable=True)
+    usage_period = Column(String, nullable=True)
+    data_points = Column(Integer, nullable=True)
+    reference = Column(String(20), nullable=True, default=lambda: f"TXN-{uuid.uuid4().hex[:8].upper()}")
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+
+    billing = relationship("Billing", back_populates="transactions")
 
 
 class MLFeatureSubscription(Base):

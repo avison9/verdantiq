@@ -3,6 +3,8 @@ import models
 import schemas
 from datetime import datetime, timezone
 from dateutil.relativedelta import relativedelta
+import uuid
+import math
 
 
 SENSOR_MESSAGE_COST = 0.10 / 100000
@@ -85,3 +87,95 @@ def update_message_count(db: Session, tenant_id: int, increment: int):
         db.commit()
         db.refresh(billing)
     return billing
+
+
+def _detect_card_brand(card_number: str) -> str:
+    if card_number.startswith("4"):
+        return "Visa"
+    if card_number.startswith(("51", "52", "53", "54", "55")):
+        return "Mastercard"
+    if card_number.startswith(("34", "37")):
+        return "Amex"
+    return "Card"
+
+
+def _build_tx_meta(topup: schemas.BillingTopUpRequest) -> dict:
+    """Return description, card_last4, card_brand for a topup."""
+    method = topup.payment_method
+    if method == "credit_card" and topup.card_number:
+        num = topup.card_number.replace(" ", "")
+        last4 = num[-4:]
+        brand = _detect_card_brand(num)
+        return {
+            "description": f"Top-up via {brand} ending {last4}",
+            "card_last4": last4,
+            "card_brand": brand,
+        }
+    if method == "paypal" and topup.payer_email:
+        return {"description": f"Top-up via PayPal ({topup.payer_email})"}
+    if method == "skrill" and topup.payer_email:
+        return {"description": f"Top-up via Skrill ({topup.payer_email})"}
+    if method == "revolut" and topup.payer_email:
+        return {"description": f"Top-up via Revolut ({topup.payer_email})"}
+    if method == "bank_transfer":
+        ref = topup.reference or "N/A"
+        return {"description": f"Top-up via Wire Transfer (ref: {ref})"}
+    label = method.replace("_", " ").title()
+    return {"description": f"Top-up via {label}"}
+
+
+def topup_billing(db: Session, tenant_id: int, topup: schemas.BillingTopUpRequest) -> models.Billing:
+    billing = get_billing_by_tenant(db, tenant_id)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    if not billing:
+        billing = models.Billing(
+            tenant_id=tenant_id,
+            status=models.BillingStatus.ACTIVE,
+            frequency=models.BillingFrequency.MONTHLY,
+            payment_method=topup.payment_method,
+            balance=0.0,
+            amount_due=0.0,
+            due_date=now + relativedelta(months=1),
+        )
+        db.add(billing)
+        db.flush()
+
+    billing.balance = (billing.balance or 0.0) + topup.amount
+    billing.status = models.BillingStatus.ACTIVE
+    billing.payment_method = topup.payment_method
+    billing.last_payment_date = now
+
+    meta = _build_tx_meta(topup)
+    tx = models.Transaction(
+        billing_id=billing.id,
+        type=models.TransactionType.CREDIT,
+        amount=topup.amount,
+        balance_after=billing.balance,
+        payment_method=topup.payment_method,
+        reference=f"TXN-{uuid.uuid4().hex[:8].upper()}",
+        **meta,
+    )
+    db.add(tx)
+    db.commit()
+    db.refresh(billing)
+    return billing
+
+
+def get_transactions(
+    db: Session, billing_id: int, page: int = 1, per_page: int = 20
+) -> schemas.TransactionPage:
+    query = (
+        db.query(models.Transaction)
+        .filter(models.Transaction.billing_id == billing_id)
+        .order_by(models.Transaction.created_at.desc())
+    )
+    total = query.count()
+    items = query.offset((page - 1) * per_page).limit(per_page).all()
+    return schemas.TransactionPage(
+        items=items,
+        total=total,
+        page=page,
+        per_page=per_page,
+        pages=max(1, math.ceil(total / per_page)),
+    )

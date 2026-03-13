@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException, status, Request
+from fastapi import FastAPI, Depends, HTTPException, status, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 from typing import List
@@ -14,6 +15,28 @@ from configs import get_db, Base, engine, ALLOWED_ORIGINS
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    # Idempotent migrations
+    with engine.connect() as conn:
+        conn.execute(text(
+            "ALTER TABLE billings ADD COLUMN IF NOT EXISTS balance FLOAT NOT NULL DEFAULT 0.0"
+        ))
+        # Convert payment_method from PostgreSQL enum to VARCHAR for extensibility
+        conn.execute(text("""
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name='billings'
+                      AND column_name='payment_method'
+                      AND data_type='USER-DEFINED'
+                ) THEN
+                    ALTER TABLE billings
+                        ALTER COLUMN payment_method TYPE VARCHAR(50)
+                        USING payment_method::VARCHAR(50);
+                END IF;
+            END $$;
+        """))
+        conn.commit()
     yield
 
 
@@ -100,6 +123,30 @@ async def record_payment(
     if not billing or billing.id != billing_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Billing not found or unauthorized")
     return crud.update_billing_on_payment(db, billing)
+
+
+@app.post("/billings/topup/", response_model=schemas.BillingResponse)
+async def topup_billing(
+    topup: schemas.BillingTopUpRequest,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if topup.amount <= 0:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Amount must be positive")
+    return crud.topup_billing(db, current_user.tenant_id, topup)
+
+
+@app.get("/billings/transactions/", response_model=schemas.TransactionPage)
+async def get_transactions(
+    page: int = Query(default=1, ge=1),
+    per_page: int = Query(default=20, ge=10, le=100),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    billing = crud.get_billing_by_tenant(db, current_user.tenant_id)
+    if not billing:
+        return schemas.TransactionPage(items=[], total=0, page=page, per_page=per_page, pages=1)
+    return crud.get_transactions(db, billing.id, page, per_page)
 
 
 # ─── Internal routes (sensor service → tenant service) ───────────────────────

@@ -314,3 +314,332 @@ def test_sync_iot_devices_internal(client, mock_user):
         },
     )
     assert resp.status_code == 200
+
+
+# ── Billing top-up & transactions ────────────────────────────────────────────
+
+TOPUP_CARD = {
+    "amount": 50.0,
+    "payment_method": "credit_card",
+    "cardholder_name": "Jane Farm",
+    "card_number": "4111111111111111",
+    "card_expiry": "12/27",
+    "card_cvv": "123",
+}
+
+
+# ── CRUD-level unit tests ─────────────────────────────────────────────────────
+
+def test_topup_creates_billing_when_none_exists(db_session, mock_user):
+    """topup_billing creates a new Billing row when tenant has none."""
+    import crud, schemas
+    req = schemas.BillingTopUpRequest(**TOPUP_CARD)
+    billing = crud.topup_billing(db_session, mock_user.tenant_id, req)
+
+    assert billing.id is not None
+    assert billing.tenant_id == mock_user.tenant_id
+    assert billing.balance == 50.0
+    assert billing.status == "active"
+    assert billing.payment_method == "credit_card"
+
+
+def test_topup_adds_to_existing_balance(db_session, mock_user, billing_data):
+    """Second topup accumulates balance; does not reset existing value."""
+    import crud, schemas, models
+    from datetime import timedelta, timezone
+
+    existing = models.Billing(
+        tenant_id=mock_user.tenant_id,
+        status=models.BillingStatus.INACTIVE,
+        frequency=models.BillingFrequency.MONTHLY,
+        payment_method="credit_card",
+        balance=20.0,
+        amount_due=0.0,
+        due_date=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=30),
+    )
+    db_session.add(existing)
+    db_session.commit()
+
+    req = schemas.BillingTopUpRequest(**TOPUP_CARD)
+    billing = crud.topup_billing(db_session, mock_user.tenant_id, req)
+
+    assert billing.balance == 70.0  # 20 existing + 50 topup
+
+
+def test_topup_activates_inactive_billing(db_session, mock_user):
+    """An inactive billing record becomes active after a topup."""
+    import crud, schemas, models
+    from datetime import timedelta, timezone
+
+    existing = models.Billing(
+        tenant_id=mock_user.tenant_id,
+        status=models.BillingStatus.INACTIVE,
+        frequency=models.BillingFrequency.MONTHLY,
+        payment_method="credit_card",
+        balance=0.0,
+        amount_due=0.0,
+        due_date=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=30),
+    )
+    db_session.add(existing)
+    db_session.commit()
+
+    req = schemas.BillingTopUpRequest(**TOPUP_CARD)
+    billing = crud.topup_billing(db_session, mock_user.tenant_id, req)
+
+    assert billing.status == "active"
+
+
+def test_topup_creates_credit_transaction(db_session, mock_user):
+    """topup_billing writes one credit Transaction row with correct fields."""
+    import crud, schemas, models
+
+    req = schemas.BillingTopUpRequest(**TOPUP_CARD)
+    billing = crud.topup_billing(db_session, mock_user.tenant_id, req)
+
+    txs = db_session.query(models.Transaction).filter_by(billing_id=billing.id).all()
+    assert len(txs) == 1
+    tx = txs[0]
+    assert tx.type == models.TransactionType.CREDIT
+    assert tx.amount == 50.0
+    assert tx.balance_after == 50.0
+    assert tx.card_last4 == "1111"
+    assert tx.card_brand == "Visa"
+    assert tx.reference is not None and tx.reference.startswith("TXN-")
+
+
+def test_topup_paypal_creates_correct_description(db_session, mock_user):
+    """PayPal topup stores the payer email in the transaction description."""
+    import crud, schemas
+
+    req = schemas.BillingTopUpRequest(
+        amount=30.0,
+        payment_method="paypal",
+        payer_email="jane@farm.com",
+    )
+    billing = crud.topup_billing(db_session, mock_user.tenant_id, req)
+
+    import models
+    tx = db_session.query(models.Transaction).filter_by(billing_id=billing.id).first()
+    assert "PayPal" in tx.description
+    assert "jane@farm.com" in tx.description
+    assert tx.card_last4 is None
+
+
+def test_topup_bank_transfer_with_reference(db_session, mock_user):
+    """Wire transfer topup includes reference in description."""
+    import crud, schemas
+
+    req = schemas.BillingTopUpRequest(
+        amount=100.0,
+        payment_method="bank_transfer",
+        reference="REF-ABC123",
+    )
+    billing = crud.topup_billing(db_session, mock_user.tenant_id, req)
+
+    import models
+    tx = db_session.query(models.Transaction).filter_by(billing_id=billing.id).first()
+    assert "Wire Transfer" in tx.description
+    assert "REF-ABC123" in tx.description
+
+
+def test_topup_skrill_stores_email(db_session, mock_user):
+    import crud, schemas, models
+
+    req = schemas.BillingTopUpRequest(
+        amount=25.0,
+        payment_method="skrill",
+        payer_email="user@skrill.com",
+    )
+    billing = crud.topup_billing(db_session, mock_user.tenant_id, req)
+    tx = db_session.query(models.Transaction).filter_by(billing_id=billing.id).first()
+    assert "Skrill" in tx.description
+    assert billing.payment_method == "skrill"
+
+
+def test_topup_revolut_stores_email(db_session, mock_user):
+    import crud, schemas, models
+
+    req = schemas.BillingTopUpRequest(
+        amount=40.0,
+        payment_method="revolut",
+        payer_email="user@revolut.com",
+    )
+    billing = crud.topup_billing(db_session, mock_user.tenant_id, req)
+    tx = db_session.query(models.Transaction).filter_by(billing_id=billing.id).first()
+    assert "Revolut" in tx.description
+
+
+# ── Card brand detection ──────────────────────────────────────────────────────
+
+def test_detect_card_brand_visa():
+    import crud
+    assert crud._detect_card_brand("4111111111111111") == "Visa"
+
+
+def test_detect_card_brand_mastercard():
+    import crud
+    assert crud._detect_card_brand("5111111111111111") == "Mastercard"
+
+
+def test_detect_card_brand_amex():
+    import crud
+    assert crud._detect_card_brand("371449635398431") == "Amex"
+
+
+def test_detect_card_brand_unknown():
+    import crud
+    assert crud._detect_card_brand("6011111111111117") == "Card"
+
+
+# ── get_transactions CRUD ─────────────────────────────────────────────────────
+
+def test_get_transactions_empty_when_no_billing(db_session, mock_user):
+    import crud
+    page = crud.get_transactions(db_session, billing_id=999999, page=1, per_page=20)
+    assert page.total == 0
+    assert page.items == []
+    assert page.pages == 1
+
+
+def test_get_transactions_returns_all_and_paginates(db_session, mock_user):
+    import crud, schemas
+
+    # Create 25 transactions via 25 topups
+    req = schemas.BillingTopUpRequest(**TOPUP_CARD)
+    billing = None
+    for _ in range(25):
+        billing = crud.topup_billing(db_session, mock_user.tenant_id, req)
+
+    page1 = crud.get_transactions(db_session, billing.id, page=1, per_page=20)
+    assert page1.total == 25
+    assert len(page1.items) == 20
+    assert page1.pages == 2
+
+    page2 = crud.get_transactions(db_session, billing.id, page=2, per_page=20)
+    assert len(page2.items) == 5
+
+
+def test_get_transactions_ordered_newest_first(db_session, mock_user):
+    import crud, schemas
+
+    req = schemas.BillingTopUpRequest(**{**TOPUP_CARD, "amount": 10.0})
+    billing = None
+    for _ in range(3):
+        billing = crud.topup_billing(db_session, mock_user.tenant_id, req)
+
+    page = crud.get_transactions(db_session, billing.id, page=1, per_page=10)
+    dates = [tx.created_at for tx in page.items]
+    assert dates == sorted(dates, reverse=True)
+
+
+# ── API-level tests ───────────────────────────────────────────────────────────
+
+def test_topup_endpoint_creates_billing(client):
+    resp = client.post("/billings/topup/", json=TOPUP_CARD)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["balance"] == 50.0
+    assert data["status"] == "active"
+    assert data["payment_method"] == "credit_card"
+
+
+def test_topup_endpoint_accumulates_balance(client):
+    client.post("/billings/topup/", json=TOPUP_CARD)
+    resp = client.post("/billings/topup/", json=TOPUP_CARD)
+    assert resp.status_code == 200
+    assert resp.json()["balance"] == 100.0
+
+
+def test_topup_endpoint_rejects_zero_amount(client):
+    resp = client.post("/billings/topup/", json={**TOPUP_CARD, "amount": 0})
+    assert resp.status_code == 422
+
+
+def test_topup_endpoint_rejects_negative_amount(client):
+    resp = client.post("/billings/topup/", json={**TOPUP_CARD, "amount": -10})
+    assert resp.status_code == 422
+
+
+def test_topup_endpoint_paypal(client):
+    payload = {"amount": 75.0, "payment_method": "paypal", "payer_email": "p@example.com"}
+    resp = client.post("/billings/topup/", json=payload)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["balance"] == 75.0
+    assert data["payment_method"] == "paypal"
+
+
+def test_topup_endpoint_skrill(client):
+    payload = {"amount": 20.0, "payment_method": "skrill", "payer_email": "s@example.com"}
+    resp = client.post("/billings/topup/", json=payload)
+    assert resp.status_code == 200
+
+
+def test_topup_endpoint_revolut(client):
+    payload = {"amount": 35.0, "payment_method": "revolut", "payer_email": "r@example.com"}
+    resp = client.post("/billings/topup/", json=payload)
+    assert resp.status_code == 200
+
+
+def test_topup_endpoint_wire_transfer(client):
+    payload = {"amount": 200.0, "payment_method": "bank_transfer", "reference": "WIRE-001"}
+    resp = client.post("/billings/topup/", json=payload)
+    assert resp.status_code == 200
+
+
+def test_transactions_endpoint_empty_no_billing(client):
+    resp = client.get("/billings/transactions/")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 0
+    assert data["items"] == []
+
+
+def test_transactions_endpoint_after_topup(client):
+    client.post("/billings/topup/", json=TOPUP_CARD)
+    resp = client.get("/billings/transactions/")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 1
+    tx = data["items"][0]
+    assert tx["type"] == "credit"
+    assert tx["amount"] == 50.0
+    assert tx["card_last4"] == "1111"
+    assert tx["card_brand"] == "Visa"
+    assert tx["reference"].startswith("TXN-")
+
+
+def test_transactions_endpoint_pagination(client):
+    for _ in range(15):
+        client.post("/billings/topup/", json=TOPUP_CARD)
+
+    resp = client.get("/billings/transactions/?page=1&per_page=10")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 15
+    assert len(data["items"]) == 10
+    assert data["pages"] == 2
+
+
+def test_transactions_endpoint_invalid_per_page_too_low(client):
+    resp = client.get("/billings/transactions/?per_page=5")
+    assert resp.status_code == 422
+
+
+def test_transactions_endpoint_invalid_per_page_too_high(client):
+    resp = client.get("/billings/transactions/?per_page=101")
+    assert resp.status_code == 422
+
+
+def test_billing_response_includes_balance_field(client, billing_data):
+    resp = client.post("/billings/", json=billing_data)
+    assert resp.status_code == 200
+    assert "balance" in resp.json()
+    assert resp.json()["balance"] == 0.0
+
+
+def test_get_billing_after_topup_shows_updated_balance(client):
+    client.post("/billings/topup/", json=TOPUP_CARD)
+    resp = client.get("/billings/")
+    assert resp.status_code == 200
+    assert resp.json()["balance"] == 50.0
