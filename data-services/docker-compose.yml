@@ -435,8 +435,8 @@ services:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8091/health || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 15s
+      retries: 10
+      start_period: 30s
 
   # ── Data Service ─────────────────────────────────────────────────────────────
   data-service:
@@ -464,8 +464,8 @@ services:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8090/health || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 20s
+      retries: 10
+      start_period: 30s
 
   # ── Sensor Streaming Job (Spark) ─────────────────────────────────────────────
   sensor-streaming:

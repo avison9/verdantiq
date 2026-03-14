@@ -228,12 +228,17 @@ def _connect_mqtt_with_retry(max_attempts: int = 20, delay: float = 3.0) -> None
 
 def main() -> None:
     _load_routes()
-    _connect_mqtt_with_retry()
 
-    # Subscribe to any routes that were loaded from disk
-    with _routes_lock:
-        for topic in _routes:
-            _mqtt_client.subscribe(topic, qos=1)
+    # Connect to MQTT in a background thread so uvicorn (and the health
+    # endpoint) starts immediately — the health check passes as soon as
+    # the HTTP server is up, regardless of MQTT status.
+    def _mqtt_init():
+        _connect_mqtt_with_retry()
+        with _routes_lock:
+            for topic in _routes:
+                _mqtt_client.subscribe(topic, qos=1)
+
+    threading.Thread(target=_mqtt_init, daemon=True, name="mqtt-init").start()
 
     uvicorn.run(app, host="0.0.0.0", port=BRIDGE_PORT, log_level="info")
 
