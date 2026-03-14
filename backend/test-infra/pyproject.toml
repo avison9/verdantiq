@@ -10,6 +10,8 @@ dependencies = [
     "confluent-kafka>=2.10.0",
     "minio>=7.2.0",
     "trino>=0.330.0",
+    "paho-mqtt>=1.6.1",
+    "websockets>=13.0",
 ]
 
 [tool.uv]
