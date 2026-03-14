@@ -221,8 +221,8 @@ const SensorDetail = () => {
       sensor_type: sensor.sensor_type,
       device_id:   sensor.sensor_id,
       location: {
-        latitude:  parseFloat(sensor.sensor_metadata?.latitude  ?? "0") || 0,
-        longitude: parseFloat(sensor.sensor_metadata?.longitude ?? "0") || 0,
+        latitude:  parseFloat((sensor.sensor_metadata?.latitude  as string) ?? "0") || 0,
+        longitude: parseFloat((sensor.sensor_metadata?.longitude as string) ?? "0") || 0,
       },
     };
 
