@@ -29,12 +29,17 @@ services:
       ZOO_SERVERS: server.1=zookeeper-1:2888:3888;2181 server.2=zookeeper-2:2888:3888;2181
       ZOO_CLIENT_PORT: 2181
       ZOO_4LW_COMMANDS_WHITELIST: ruok,stat,srvr
+      JVMFLAGS: "-Xmx128m -Xms128m"
     volumes:
       - zk_data1:/data
       - zk_log1:/datalog
       - ./kafka/kafka_utils/zkok.sh:/zkok.sh
     networks:
       - verdantiq-net
+    deploy:
+      resources:
+        limits:
+          memory: 256M
     healthcheck:
       test: ["CMD-SHELL", "sh /zkok.sh"]
       interval: 15s
@@ -55,6 +60,7 @@ services:
       ZOO_SERVERS: server.1=zookeeper-1:2888:3888;2181 server.2=zookeeper-2:2888:3888;2181
       ZOO_CLIENT_PORT: 2181
       ZOO_4LW_COMMANDS_WHITELIST: ruok,stat,srvr
+      JVMFLAGS: "-Xmx128m -Xms128m"
     volumes:
       - zk_data2:/data
       - zk_log2:/datalog
@@ -63,6 +69,10 @@ services:
       - zookeeper-1
     networks:
       - verdantiq-net
+    deploy:
+      resources:
+        limits:
+          memory: 256M
     healthcheck:
       test: ["CMD-SHELL", "sh /zkok.sh"]
       interval: 15s
@@ -85,11 +95,16 @@ services:
       KAFKA_ZOOKEEPER_CONNECT: zookeeper-1:2181,zookeeper-2:2181
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka1:9092,PLAINTEXT_HOST://localhost:19092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 2
+      KAFKA_HEAP_OPTS: "-Xmx256m -Xms256m"
     ports:
       - "19092:19092"
     networks:
       - verdantiq-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
     healthcheck:
       test: ["CMD", "kafka-topics", "--list", "--bootstrap-server", "localhost:9092"]
       interval: 10s
@@ -110,66 +125,22 @@ services:
       KAFKA_ZOOKEEPER_CONNECT: zookeeper-1:2181,zookeeper-2:2181
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka2:9093,PLAINTEXT_HOST://localhost:19093
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 2
+      KAFKA_HEAP_OPTS: "-Xmx256m -Xms256m"
     ports:
       - "19093:19093"
     networks:
       - verdantiq-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
     healthcheck:
       test: ["CMD", "kafka-topics", "--list", "--bootstrap-server", "localhost:9093"]
       interval: 10s
       timeout: 30s
       retries: 3
 
-  kafka3:
-    image: confluentinc/cp-kafka:7.4.0
-    container_name: kafka3
-    profiles: [dataservices, full]
-    depends_on:
-      zookeeper-1:
-        condition: service_healthy
-      zookeeper-2:
-        condition: service_healthy
-    environment:
-      KAFKA_BROKER_ID: 3
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper-1:2181,zookeeper-2:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka3:9094,PLAINTEXT_HOST://localhost:19094
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
-    ports:
-      - "19094:19094"
-    networks:
-      - verdantiq-net
-    healthcheck:
-      test: ["CMD", "kafka-topics", "--list", "--bootstrap-server", "localhost:9094"]
-      interval: 10s
-      timeout: 30s
-      retries: 3
-
-  kafka4:
-    image: confluentinc/cp-kafka:7.4.0
-    container_name: kafka4
-    profiles: [dataservices, full]
-    depends_on:
-      zookeeper-1:
-        condition: service_healthy
-      zookeeper-2:
-        condition: service_healthy
-    environment:
-      KAFKA_BROKER_ID: 4
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper-1:2181,zookeeper-2:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka4:9095,PLAINTEXT_HOST://localhost:19095
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
-    ports:
-      - "19095:19095"
-    networks:
-      - verdantiq-net
-    healthcheck:
-      test: ["CMD", "kafka-topics", "--list", "--bootstrap-server", "localhost:9095"]
-      interval: 10s
-      timeout: 30s
-      retries: 3
 
   schema-registry:
     build:
@@ -182,15 +153,11 @@ services:
         condition: service_healthy
       kafka2:
         condition: service_healthy
-      kafka3:
-        condition: service_healthy
-      kafka4:
-        condition: service_healthy
     ports:
       - "8089:8089"
       - "9101:9101"
     environment:
-      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: "kafka1:9092,kafka2:9093,kafka3:9094,kafka4:9095"
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: "kafka1:9092,kafka2:9093"
       SCHEMA_REGISTRY_HOST_NAME: schema-registry
       SCHEMA_REGISTRY_LISTENERS: "http://0.0.0.0:8089"
       SCHEMA_REGISTRY_AVRO_AUTO_REGISTER_SCHEMAS: "true"
@@ -210,10 +177,6 @@ services:
       kafka1:
         condition: service_healthy
       kafka2:
-        condition: service_healthy
-      kafka3:
-        condition: service_healthy
-      kafka4:
         condition: service_healthy
     networks:
       - verdantiq-net
@@ -415,7 +378,7 @@ services:
     environment:
       MQTT_HOST:     mosquitto
       MQTT_PORT:     "1883"
-      KAFKA_BROKERS: "kafka1:9092,kafka2:9093,kafka3:9094,kafka4:9095"
+      KAFKA_BROKERS: "kafka1:9092,kafka2:9093"
       BRIDGE_PORT:   "8091"
     depends_on:
       mosquitto:
@@ -423,10 +386,6 @@ services:
       kafka1:
         condition: service_healthy
       kafka2:
-        condition: service_healthy
-      kafka3:
-        condition: service_healthy
-      kafka4:
         condition: service_healthy
     networks:
       - verdantiq-net
