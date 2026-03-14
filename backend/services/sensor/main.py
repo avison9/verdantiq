@@ -382,6 +382,49 @@ async def get_sensor_connection_events(
     return crud.get_connection_events(db, sensor_id, page, per_page)
 
 
+@app.post("/sensors/{sensor_id}/connection-events", response_model=schemas.SensorConnectionEventResponse)
+async def log_sensor_connection_event(
+    sensor_id: str,
+    body: schemas.ConnectionEventCreate,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Log a pipeline step event from the frontend after it confirms completion."""
+    sensor = crud.get_sensor(db, sensor_id)
+    if not sensor:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sensor not found")
+    if sensor.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+    crud.log_connection_event(
+        db, sensor_id, sensor.tenant_id,
+        event_type=body.event_type,
+        status=body.status,
+        message=body.message,
+        details=body.details,
+    )
+    db.commit()
+    latest = (
+        db.query(models.SensorConnectionEvent)
+        .filter(models.SensorConnectionEvent.sensor_id == sensor_id)
+        .order_by(models.SensorConnectionEvent.created_at.desc())
+        .first()
+    )
+    return latest
+
+
+@app.post("/internal/sensors/{sensor_id}/messages")
+async def internal_increment_messages(
+    sensor_id: str,
+    body: schemas.MessageIncrementRequest,
+    db: Session = Depends(get_db),
+):
+    """Internal endpoint (no auth) — called by data service to count Kafka messages."""
+    updated = crud.increment_sensor_messages(db, sensor_id, body.message_increment)
+    if updated:
+        await notify_message_increment(updated.tenant_id, body.message_increment)
+    return {"ok": True}
+
+
 @app.get("/health")
 async def health():
     return {"service": "sensor", "status": "ok"}
