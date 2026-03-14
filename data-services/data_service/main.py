@@ -38,6 +38,7 @@ from aiokafka import AIOKafkaConsumer
 from confluent_kafka.admin import AdminClient, NewTopic
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 # mqtt_publisher lives in the iot package (mounted into the container)
@@ -145,6 +146,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="VerdantIQ Data Service", version="1.0.0", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/health")
