@@ -39,6 +39,7 @@ from confluent_kafka.admin import AdminClient, NewTopic
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 # mqtt_publisher lives in the iot package (mounted into the container)
@@ -49,10 +50,12 @@ load_dotenv(override=True)
 
 # ── config ────────────────────────────────────────────────────────────────────
 
-KAFKA_BROKERS  = os.getenv("KAFKA_BROKERS",   "kafka1:9092,kafka2:9093")
-BRIDGE_URL     = os.getenv("BRIDGE_URL",      "http://mqtt-bridge:8091")
-MQTT_HOST      = os.getenv("MQTT_HOST",       "mosquitto")
-MQTT_PORT      = int(os.getenv("MQTT_PORT",   "1883"))
+KAFKA_BROKERS       = os.getenv("KAFKA_BROKERS",       "kafka1:9092,kafka2:9093")
+BRIDGE_URL          = os.getenv("BRIDGE_URL",          "http://mqtt-bridge:8091")
+MQTT_HOST           = os.getenv("MQTT_HOST",           "mosquitto")
+MQTT_PORT           = int(os.getenv("MQTT_PORT",       "1883"))
+SENSOR_SERVICE_URL  = os.getenv("SENSOR_SERVICE_URL",  "http://sensor:8003")
+MSG_FLUSH_EVERY     = int(os.getenv("MSG_FLUSH_EVERY", "5"))
 
 logging.basicConfig(
     level=logging.INFO,
@@ -64,6 +67,21 @@ log = logging.getLogger("data-service")
 # ── in-process simulator registry ────────────────────────────────────────────
 # sensor_key → MQTTSensorPublisher
 _active: Dict[str, MQTTSensorPublisher] = {}
+
+# ── per-sensor Kafka message counter ─────────────────────────────────────────
+# Accumulates counts and flushes to sensor service every MSG_FLUSH_EVERY msgs
+_msg_counts: Dict[str, int] = {}
+
+
+async def _flush_message_count(sensor_id: str, count: int) -> None:
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            await client.post(
+                f"{SENSOR_SERVICE_URL}/internal/sensors/{sensor_id}/messages",
+                json={"message_increment": count},
+            )
+    except Exception as exc:
+        log.warning("Message count flush failed for sensor %s: %s", sensor_id, exc)
 
 
 # ── Kafka admin client ────────────────────────────────────────────────────────
@@ -133,7 +151,10 @@ class ConnectResponse(BaseModel):
     mqtt_topic:  str
     kafka_topic: str
     ws_url:      str
-    status:      str
+    status:      str       # "streaming" | "failed"
+    protocol:    str
+    data_format: str
+    steps:       dict      # {step_name: {"status": "success"|"failed"|"skipped", "message": str}}
 
 
 # ── FastAPI app ───────────────────────────────────────────────────────────────
@@ -195,54 +216,82 @@ def list_active():
     }
 
 
-@app.post("/sensors/connect", response_model=ConnectResponse, status_code=201)
+@app.post("/sensors/connect", status_code=201)
 async def connect_sensor(body: ConnectRequest):
-    key = f"{body.tenant_id}.{body.sensor_id}"
+    key         = f"{body.tenant_id}.{body.sensor_id}"
+    mqtt_topic  = f"verdantiq/{body.tenant_id}/{body.sensor_id}/data"
+    kafka_topic = f"verdantiq.{body.tenant_id}.{body.sensor_id}"
 
     if key in _active:
         raise HTTPException(status_code=409, detail=f"Sensor {key} already connected")
 
-    mqtt_topic  = f"verdantiq/{body.tenant_id}/{body.sensor_id}/data"
-    kafka_topic = f"verdantiq.{body.tenant_id}.{body.sensor_id}"
+    steps: dict = {}
 
-    # Step 1 — create Kafka topic
+    def _base_payload(overall_status: str) -> dict:
+        return {
+            "sensor_id":   body.sensor_id,
+            "tenant_id":   body.tenant_id,
+            "mqtt_topic":  mqtt_topic,
+            "kafka_topic": kafka_topic,
+            "ws_url":      f"ws://localhost:8090/ws/{body.tenant_id}/{body.sensor_id}",
+            "status":      overall_status,
+            "protocol":    "mqtt",
+            "data_format": "json",
+            "steps":       steps,
+        }
+
+    # ── Step 1: Create Kafka topic ─────────────────────────────────────────
     try:
         _create_kafka_topic(body.tenant_id, body.sensor_id)
+        steps["kafka_topic_created"] = {
+            "status":  "success",
+            "message": f"Kafka topic {kafka_topic} ready (2 partitions, RF=2)",
+        }
     except Exception as exc:
         log.error("Kafka topic creation failed: %s", exc)
-        raise HTTPException(status_code=502, detail=f"Kafka topic creation failed: {exc}")
+        steps["kafka_topic_created"] = {"status": "failed", "message": str(exc)}
+        steps["mqtt_topic_created"]  = {"status": "skipped", "message": "Kafka step failed"}
+        steps["simulator_started"]   = {"status": "skipped", "message": "Kafka step failed"}
+        return JSONResponse(status_code=502, content=_base_payload("failed"))
 
-    # Step 2 — register MQTT→Kafka routing in bridge
+    # ── Step 2: Register MQTT→Kafka route in bridge ────────────────────────
     try:
         await _register_bridge_route(mqtt_topic, kafka_topic)
+        steps["mqtt_topic_created"] = {
+            "status":  "success",
+            "message": f"MQTT topic {mqtt_topic} routed to Kafka",
+        }
     except Exception as exc:
         log.error("Bridge registration failed: %s", exc)
-        raise HTTPException(status_code=502, detail=f"Bridge registration failed: {exc}")
+        steps["mqtt_topic_created"] = {"status": "failed", "message": str(exc)}
+        steps["simulator_started"]  = {"status": "skipped", "message": "Bridge step failed"}
+        return JSONResponse(status_code=502, content=_base_payload("failed"))
 
-    # Step 3 — start MQTT simulator (background thread, non-blocking)
-    publisher = MQTTSensorPublisher(
-        tenant_id=body.tenant_id,
-        sensor_id=body.sensor_id,
-        sensor_type=body.sensor_type,
-        device_id=body.device_id,
-        location=body.location,
-        interval=2.0,
-        mqtt_host=MQTT_HOST,
-        mqtt_port=MQTT_PORT,
-    )
-    publisher.start()
-    _active[key] = publisher
+    # ── Step 3: Start MQTT simulator ───────────────────────────────────────
+    try:
+        publisher = MQTTSensorPublisher(
+            tenant_id=body.tenant_id,
+            sensor_id=body.sensor_id,
+            sensor_type=body.sensor_type,
+            device_id=body.device_id,
+            location=body.location,
+            interval=2.0,
+            mqtt_host=MQTT_HOST,
+            mqtt_port=MQTT_PORT,
+        )
+        publisher.start()
+        _active[key] = publisher
+        steps["simulator_started"] = {
+            "status":  "success",
+            "message": f"IoT simulator started (type={body.sensor_type})",
+        }
+    except Exception as exc:
+        log.error("Simulator start failed: %s", exc)
+        steps["simulator_started"] = {"status": "failed", "message": str(exc)}
+        return JSONResponse(status_code=500, content=_base_payload("failed"))
 
     log.info("Sensor connected: %s (type=%s)", key, body.sensor_type)
-
-    return ConnectResponse(
-        sensor_id=body.sensor_id,
-        tenant_id=body.tenant_id,
-        mqtt_topic=mqtt_topic,
-        kafka_topic=kafka_topic,
-        ws_url=f"ws://localhost:8090/ws/{body.tenant_id}/{body.sensor_id}",
-        status="streaming",
-    )
+    return JSONResponse(status_code=201, content=_base_payload("streaming"))
 
 
 @app.delete("/sensors/{tenant_id}/{sensor_id}/disconnect")
@@ -282,6 +331,7 @@ async def websocket_stream(websocket: WebSocket, tenant_id: str, sensor_id: str)
         enable_auto_commit=False,
         consumer_timeout_ms=1000,
     )
+    pending_count = 0
     try:
         await consumer.start()
         async for msg in consumer:
@@ -296,6 +346,13 @@ async def websocket_stream(websocket: WebSocket, tenant_id: str, sensor_id: str)
                     "payload":   json.loads(text),
                 })
                 await websocket.send_text(envelope)
+
+                # Count messages and flush to sensor service periodically
+                pending_count += 1
+                if pending_count >= MSG_FLUSH_EVERY:
+                    asyncio.create_task(_flush_message_count(sensor_id, pending_count))
+                    pending_count = 0
+
             except WebSocketDisconnect:
                 log.info("WebSocket closed for %s", topic)
                 break
@@ -305,6 +362,9 @@ async def websocket_stream(websocket: WebSocket, tenant_id: str, sensor_id: str)
     except Exception as exc:
         log.error("Kafka consumer error [%s]: %s", topic, exc)
     finally:
+        # Flush any remaining count on disconnect
+        if pending_count > 0:
+            asyncio.create_task(_flush_message_count(sensor_id, pending_count))
         try:
             await consumer.stop()
         except Exception:

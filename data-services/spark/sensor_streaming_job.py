@@ -49,7 +49,7 @@ log = logging.getLogger("sensor-streaming")
 
 # ── env config ────────────────────────────────────────────────────────────────
 
-KAFKA_BROKERS        = os.getenv("KAFKA_BROKERS",        "kafka1:9092,kafka2:9093,kafka3:9094,kafka4:9095")
+KAFKA_BROKERS        = os.getenv("KAFKA_BROKERS",        "kafka1:9092,kafka2:9093")
 MINIO_ENDPOINT       = os.getenv("MINIO_ENDPOINT",       "http://minio:9000")
 MINIO_ACCESS_KEY     = os.getenv("MINIO_ROOT_USER",      "admin")
 MINIO_SECRET_KEY     = os.getenv("MINIO_ROOT_PASSWORD",  "myminiopassword")
@@ -88,7 +88,7 @@ def build_spark() -> SparkSession:
         .config("spark.sql.catalog.iceberg.uri",           ICEBERG_REST_URI)
         .config("spark.sql.catalog.iceberg.warehouse",     ICEBERG_WAREHOUSE)
         .config("spark.sql.catalog.iceberg.io-impl",
-                "org.apache.iceberg.aws.s3.S3FileIO")
+                "org.apache.iceberg.hadoop.HadoopFileIO")
         .config("spark.sql.catalog.iceberg.s3.endpoint",  MINIO_ENDPOINT)
         .config("spark.sql.catalog.iceberg.s3.path-style-access", "true")
         # ── S3A / MinIO ────────────────────────────────────────────────────

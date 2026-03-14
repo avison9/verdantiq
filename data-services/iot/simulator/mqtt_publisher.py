@@ -12,6 +12,7 @@ Classes
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -33,6 +34,18 @@ def _r(lo: float, hi: float, decimals: int = 2) -> float:
 
 def _ts() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _mac_from_id(seed: str) -> str:
+    """Deterministic MAC address derived from device ID."""
+    h = hashlib.md5(seed.encode()).hexdigest()
+    return ":".join(h[i:i+2].upper() for i in range(0, 12, 2))
+
+
+def _ip_from_id(seed: str) -> str:
+    """Deterministic local IP address derived from device ID."""
+    h = hashlib.md5(seed.encode()).digest()
+    return f"192.168.{h[0] % 256}.{(h[1] % 253) + 2}"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -175,6 +188,12 @@ class MQTTSensorPublisher:
         self._gen    = SensorDataGenerator()
         self._stop   = threading.Event()
         self._thread: threading.Thread | None = None
+
+        # Hardware identifiers — stable per device, derived deterministically
+        self._mac          = _mac_from_id(sensor_id)
+        self._ip           = _ip_from_id(sensor_id)
+        self._firmware     = f"v{random.randint(1,3)}.{random.randint(0,9)}.{random.randint(0,9)}"
+        self._memory_total = random.choice([256, 512, 1024, 2048])
         self._client = mqtt.Client(client_id=f"sim-{sensor_id}", clean_session=True)
         self._client.on_connect    = lambda c, u, f, rc: _log.info("Publisher[%s] connected", sensor_id) if rc == 0 else _log.error("Publisher[%s] connect failed rc=%s", sensor_id, rc)
         self._client.on_disconnect = lambda c, u, rc: _log.warning("Publisher[%s] unexpected disconnect", sensor_id) if rc != 0 else None
@@ -201,6 +220,15 @@ class MQTTSensorPublisher:
                                              location=self.location)
                 payload["tenant_id"] = self.tenant_id
                 payload["sensor_id"] = self.sensor_id
+                payload["hardware_info"] = {
+                    "firmware_version":      self._firmware,
+                    "mac_address":           self._mac,
+                    "ip_address":            self._ip,
+                    "battery_level_percent": _r(20, 100, 0),
+                    "memory_free_mb":        round(_r(self._memory_total * 0.1,
+                                                     self._memory_total * 0.85, 0)),
+                    "memory_total_mb":       self._memory_total,
+                }
                 result = self._client.publish(self.topic, json.dumps(payload), qos=1)
                 if result.rc != mqtt.MQTT_ERR_SUCCESS:
                     _log.warning("Publisher[%s] publish rc=%s", self.sensor_id, result.rc)

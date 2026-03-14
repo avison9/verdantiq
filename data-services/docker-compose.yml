@@ -428,10 +428,11 @@ services:
     ports:
       - "8090:8090"
     environment:
-      KAFKA_BROKERS:  "kafka1:9092,kafka2:9093,kafka3:9094,kafka4:9095"
-      BRIDGE_URL:     "http://mqtt-bridge:8091"
-      MQTT_HOST:      mosquitto
-      MQTT_PORT:      "1883"
+      KAFKA_BROKERS:      "kafka1:9092,kafka2:9093"
+      BRIDGE_URL:         "http://mqtt-bridge:8091"
+      MQTT_HOST:          mosquitto
+      MQTT_PORT:          "1883"
+      SENSOR_SERVICE_URL: "http://sensor:8003"
     depends_on:
       mqtt-bridge:
         condition: service_healthy

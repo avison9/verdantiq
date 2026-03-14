@@ -122,3 +122,10 @@ class SensorDataResponse(BaseModel):
 
 class MessageIncrementRequest(BaseModel):
     message_increment: int = 1
+
+
+class ConnectionEventCreate(BaseModel):
+    event_type: str
+    status: str = "success"
+    message: Optional[str] = None
+    details: Optional[dict] = None
