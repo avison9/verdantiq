@@ -124,6 +124,8 @@ class ConnectRequest(BaseModel):
     device_id:   str
     location:    dict = {}
 
+    model_config = {"coerce_numbers_to_str": True}
+
 
 class ConnectResponse(BaseModel):
     sensor_id:   str
@@ -158,6 +160,24 @@ app.add_middleware(
 @app.get("/health")
 def health():
     return {"status": "healthy", "active_sensors": len(_active)}
+
+
+@app.get("/kafka/topic-info")
+def kafka_topic_info(topic: str):
+    """Return metadata for a Kafka topic — primarily the replication factor."""
+    admin = _get_admin()
+    meta  = admin.list_topics(topic=topic, timeout=5)
+    t     = meta.topics.get(topic)
+    if t is None or t.error is not None:
+        raise HTTPException(status_code=404, detail=f"Topic '{topic}' not found")
+    # All partitions in a single topic share the same replication factor
+    partitions        = list(t.partitions.values())
+    replication_factor = len(partitions[0].replicas) if partitions else 0
+    return {
+        "topic":              topic,
+        "partitions":         len(partitions),
+        "replication_factor": replication_factor,
+    }
 
 
 @app.get("/sensors/active")

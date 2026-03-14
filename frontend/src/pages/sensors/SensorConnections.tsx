@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import usePageTitle from "../../hooks/usePageTitle";
@@ -13,6 +13,20 @@ import {
 import { STATUS_STYLES, sensorIcon } from "./sensorUtils";
 
 const DATA_SERVICE_URL = import.meta.env.VITE_DATA_SERVICE_URL ?? "http://localhost:8090";
+
+async function fetchReplicationFactor(topic: string): Promise<number | null> {
+  try {
+    const r = await fetch(
+      `${DATA_SERVICE_URL}/kafka/topic-info?topic=${encodeURIComponent(topic)}`,
+      { signal: AbortSignal.timeout(4000) },
+    );
+    if (!r.ok) return null;
+    const body = await r.json() as { replication_factor: number };
+    return body.replication_factor;
+  } catch {
+    return null;
+  }
+}
 
 // ── Pipeline step config ───────────────────────────────────────────────────────
 
@@ -134,6 +148,18 @@ const SensorConnections = () => {
   const [updatingId,  setUpdatingId]          = useState<string | null>(null);
   // pipeline state keyed by sensor_id
   const [pipelines, setPipelines]             = useState<Record<string, PipelineState>>({});
+  const [replicationFactor, setReplicationFactor] = useState<number | null>(null);
+
+  // Fetch Kafka replication factor once we have at least one sensor topic to probe.
+  // RF is a cluster-wide setting so one topic is representative for all sensors.
+  useEffect(() => {
+    if (!data?.items.length || !me) return;
+    const first = data.items[0];
+    const topic = `verdantiq.${me.tenant_id}.${first.sensor_id}`;
+    fetchReplicationFactor(topic).then(rf => {
+      if (rf !== null) setReplicationFactor(rf);
+    });
+  }, [data, me]);
 
   const sensors    = data?.items ?? [];
   const total      = data?.total ?? 0;
@@ -329,7 +355,9 @@ const SensorConnections = () => {
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-gray-400 uppercase tracking-wide">Backup Channels</span>
-                    <span className="font-mono text-gray-700 font-semibold">3</span>
+                    <span className="font-mono text-gray-700 font-semibold">
+                      {replicationFactor !== null ? replicationFactor : "—"}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-gray-400 uppercase tracking-wide">Data Format</span>
