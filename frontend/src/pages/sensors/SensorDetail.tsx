@@ -79,7 +79,7 @@ interface TerminalLine {
   ts?:     string;
 }
 
-const MAX_LINES = 20;
+const MAX_LINES = 5;
 
 interface HardwareInfo {
   firmware_version?:      string;
@@ -93,13 +93,13 @@ interface HardwareInfo {
 // ── Terminal component ────────────────────────────────────────────────────────
 
 function Terminal({
-  minHeight,
+  height,
   lines,
   connectState,
   onConnect,
   onDisconnect,
 }: {
-  minHeight?:    number;
+  height?:       number;
   lines:         TerminalLine[];
   connectState:  ConnectState;
   onConnect:     () => void;
@@ -126,7 +126,7 @@ function Terminal({
   return (
     <div
       className="bg-gray-950 rounded-2xl border border-gray-800 overflow-hidden flex flex-col"
-      style={minHeight ? { minHeight } : undefined}
+      style={height ? { height } : undefined}
     >
       {/* Title bar */}
       <div className="flex items-center gap-1.5 px-4 py-2.5 bg-gray-900 border-b border-gray-800 shrink-0">
@@ -138,7 +138,7 @@ function Terminal({
           connectState === "streaming" ? "text-emerald-400" :
           connectState === "error"     ? "text-red-400" : "text-gray-600"
         }`}>{statusLabel}</span>
-        <span className="ml-auto text-xs text-gray-600 font-mono">max {MAX_LINES} msgs</span>
+        <span className="ml-auto text-xs text-gray-600 font-mono">last {MAX_LINES} msgs</span>
 
         {/* Connect / Disconnect button */}
         {connectState === "idle" || connectState === "error" ? (
@@ -212,6 +212,9 @@ const Nil = () => <span className="text-gray-300">—</span>;
 let _lineId = 0;
 const nextId = () => ++_lineId;
 
+// Persistent WebSocket registry — survives navigation (Bug 3)
+const _liveStreams = new Map<string, WebSocket>();
+
 const SensorDetail = () => {
   const { sensorId } = useParams<{ sensorId: string }>();
   const navigate = useNavigate();
@@ -256,68 +259,87 @@ const SensorDetail = () => {
   // ── open WebSocket only (pipeline already running) ──────────────────────
   const openWebSocket = useCallback((quiet = false) => {
     if (!sensor) return;
+    const key = `${sensor.tenant_id}.${sensor.sensor_id}`;
+
+    const attachHandlers = (ws: WebSocket) => {
+      ws.onmessage = (evt) => {
+        try {
+          const envelope  = JSON.parse(evt.data as string);
+          const pl        = envelope.payload ?? {};
+          const ts        = new Date(envelope.ts).toISOString().slice(11, 19);
+          const metricsKey = Object.keys(pl).find(k =>
+            ["soil_metrics", "air_quality", "weather_data",
+             "temperature_data", "pollution_metrics"].includes(k),
+          );
+          const metrics = metricsKey ? pl[metricsKey] : pl;
+          pushLine(`offset:${envelope.offset} ${JSON.stringify(metrics)}`, "data", ts);
+
+          // Extract hardware_info and populate Hardware card
+          if (pl.hardware_info) {
+            const hw = pl.hardware_info as HardwareInfo;
+            setHwInfo(hw);
+            // Patch backend once so values persist across page refreshes
+            if (!hwPatchedRef.current) {
+              hwPatchedRef.current = true;
+              updateSensor({
+                sensor_id: sensor.sensor_id,
+                sensor_metadata: {
+                  firmware_version: hw.firmware_version,
+                  mac_address:      hw.mac_address,
+                  ip_address:       hw.ip_address,
+                  battery_level:    hw.battery_level_percent != null
+                                      ? String(hw.battery_level_percent)
+                                      : undefined,
+                  memory:           hw.memory_total_mb != null
+                                      ? `${hw.memory_free_mb ?? "?"}/${hw.memory_total_mb} MB`
+                                      : undefined,
+                },
+              });
+            }
+          }
+        } catch {
+          pushLine(evt.data as string, "data");
+        }
+      };
+
+      ws.onerror = () => {
+        setConnectState("error");
+        pushLine("WebSocket error — check data service", "error");
+      };
+
+      ws.onclose = (ev) => {
+        _liveStreams.delete(key);
+        wsRef.current = null;
+        setConnectState("idle");
+        pushLine(`Stream closed (code ${ev.code})`, "system");
+      };
+    };
+
+    // Reuse an existing open stream so navigating away and back keeps streaming
+    const existing = _liveStreams.get(key);
+    if (existing && existing.readyState === WebSocket.OPEN) {
+      wsRef.current = existing;
+      setConnectState("streaming");
+      if (!quiet) pushLine("Reconnected to stream ✓", "system");
+      attachHandlers(existing); // re-bind fresh closures
+      return;
+    }
+
+    // Clean up any stale ref
     if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
 
     setConnectState("connecting");
     const wsUrl = `${DATA_SERVICE_URL.replace(/^http/, "ws")}/ws/${sensor.tenant_id}/${sensor.sensor_id}`;
     const ws    = new WebSocket(wsUrl);
     wsRef.current = ws;
+    _liveStreams.set(key, ws);
 
     ws.onopen = () => {
       setConnectState("streaming");
       if (!quiet) pushLine("Stream connected ✓", "system");
     };
-
-    ws.onmessage = (evt) => {
-      try {
-        const envelope  = JSON.parse(evt.data as string);
-        const pl        = envelope.payload ?? {};
-        const ts        = new Date(envelope.ts).toISOString().slice(11, 19);
-        const metricsKey = Object.keys(pl).find(k =>
-          ["soil_metrics", "air_quality", "weather_data",
-           "temperature_data", "pollution_metrics"].includes(k),
-        );
-        const metrics = metricsKey ? pl[metricsKey] : pl;
-        pushLine(`offset:${envelope.offset} ${JSON.stringify(metrics)}`, "data", ts);
-
-        // Extract hardware_info and populate Hardware card
-        if (pl.hardware_info) {
-          const hw = pl.hardware_info as HardwareInfo;
-          setHwInfo(hw);
-          // Patch backend once so values persist across page refreshes
-          if (!hwPatchedRef.current && sensor) {
-            hwPatchedRef.current = true;
-            updateSensor({
-              sensor_id: sensor.sensor_id,
-              sensor_metadata: {
-                firmware_version:      hw.firmware_version,
-                mac_address:           hw.mac_address,
-                ip_address:            hw.ip_address,
-                battery_level:         hw.battery_level_percent != null
-                                         ? String(hw.battery_level_percent)
-                                         : undefined,
-                memory:                hw.memory_total_mb != null
-                                         ? `${hw.memory_free_mb ?? "?"}/${hw.memory_total_mb} MB`
-                                         : undefined,
-              },
-            });
-          }
-        }
-      } catch {
-        pushLine(evt.data as string, "data");
-      }
-    };
-
-    ws.onerror = () => {
-      setConnectState("error");
-      pushLine("WebSocket error — check data service", "error");
-    };
-
-    ws.onclose = (ev) => {
-      setConnectState("idle");
-      pushLine(`Stream closed (code ${ev.code})`, "system");
-    };
-  }, [sensor, pushLine]);
+    attachHandlers(ws);
+  }, [sensor, pushLine, updateSensor]);
 
   const handleConnect = useCallback(async () => {
     if (!sensor) return;
@@ -387,32 +409,40 @@ const SensorDetail = () => {
     }
   }, [sensor, pushLine, openWebSocket]);
 
-  const handleDisconnect = useCallback(async () => {
-    wsRef.current?.close();
-    wsRef.current = null;
-
-    if (sensor) {
-      try {
-        await fetch(
-          `${DATA_SERVICE_URL}/sensors/${sensor.tenant_id}/${sensor.sensor_id}/disconnect`,
-          { method: "DELETE" },
-        );
-      } catch {
-        // best-effort
-      }
+  // Disconnect closes the WebSocket view only — the pipeline keeps running (Bug 2)
+  const handleDisconnect = useCallback(() => {
+    if (!sensor) return;
+    const key = `${sensor.tenant_id}.${sensor.sensor_id}`;
+    if (wsRef.current) {
+      // Remove onclose before closing so we don't get the "Stream closed" line
+      wsRef.current.onclose = null;
+      wsRef.current.close();
+      wsRef.current = null;
     }
-
+    _liveStreams.delete(key);
     setConnectState("idle");
-    pushLine("Disconnected from pipeline", "system");
+    pushLine("Stream view closed — pipeline is still running", "system");
   }, [sensor, pushLine]);
 
-  // cleanup on unmount
+  // On unmount: detach wsRef but leave the WS running in _liveStreams (Bug 3)
   useEffect(() => {
     return () => {
-      wsRef.current?.close();
       wsRef.current = null;
     };
   }, []);
+
+  // On mount: if a stream is already open for this sensor, reattach silently (Bug 3)
+  const openWebSocketRef = useRef(openWebSocket);
+  useEffect(() => { openWebSocketRef.current = openWebSocket; }, [openWebSocket]);
+  useEffect(() => {
+    if (!sensor) return;
+    const key = `${sensor.tenant_id}.${sensor.sensor_id}`;
+    const existing = _liveStreams.get(key);
+    if (existing && existing.readyState === WebSocket.OPEN) {
+      openWebSocketRef.current(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sensor?.sensor_id]);
 
   // Poll data service every 5 s to keep Pipeline badge accurate
   useEffect(() => {
@@ -486,6 +516,7 @@ const SensorDetail = () => {
     "bg-gray-100 text-gray-500";
 
   const matchStyle = cardHeight ? { minHeight: cardHeight } : undefined;
+  const fixedStyle = cardHeight ? { height: cardHeight }    : undefined;
 
   return (
     <div className="px-6 py-8">
@@ -591,7 +622,7 @@ const SensorDetail = () => {
 
             {/* Card 4 — Terminal (live WebSocket stream) */}
             <Terminal
-              minHeight={cardHeight}
+              height={cardHeight}
               lines={lines}
               connectState={connectState}
               onConnect={handleConnect}
@@ -601,7 +632,7 @@ const SensorDetail = () => {
             {/* Card 5 — Analytics placeholder */}
             <div
               className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col"
-              style={matchStyle}
+              style={fixedStyle}
             >
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3 shrink-0">Analytics</p>
               <div className="flex-1 flex items-center justify-center">
@@ -621,7 +652,7 @@ const SensorDetail = () => {
             {/* Card 6 — Map placeholder */}
             <div
               className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col"
-              style={matchStyle}
+              style={fixedStyle}
             >
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3 shrink-0">Map View</p>
               <div className="flex-1 flex items-center justify-center">

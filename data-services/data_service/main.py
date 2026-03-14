@@ -275,7 +275,7 @@ async def connect_sensor(body: ConnectRequest):
             sensor_type=body.sensor_type,
             device_id=body.device_id,
             location=body.location,
-            interval=2.0,
+            interval=0.5,
             mqtt_host=MQTT_HOST,
             mqtt_port=MQTT_PORT,
         )

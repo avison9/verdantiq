@@ -7,7 +7,7 @@ No Kafka, no Avro, no schema-registry — only MQTT + stdlib.
 Classes
 -------
   SensorDataGenerator  : pure data factory, no I/O.
-  MQTTSensorPublisher  : publishes JSON to Mosquitto every 2 s.
+  MQTTSensorPublisher  : publishes JSON to Mosquitto every 0.5 s.
 """
 
 from __future__ import annotations
@@ -194,9 +194,32 @@ class MQTTSensorPublisher:
         self._ip           = _ip_from_id(sensor_id)
         self._firmware     = f"v{random.randint(1,3)}.{random.randint(0,9)}.{random.randint(0,9)}"
         self._memory_total = random.choice([256, 512, 1024, 2048])
-        self._client = mqtt.Client(client_id=f"sim-{sensor_id}", clean_session=True)
-        self._client.on_connect    = lambda c, u, f, rc: _log.info("Publisher[%s] connected", sensor_id) if rc == 0 else _log.error("Publisher[%s] connect failed rc=%s", sensor_id, rc)
-        self._client.on_disconnect = lambda c, u, rc: _log.warning("Publisher[%s] unexpected disconnect", sensor_id) if rc != 0 else None
+
+        # paho 2.x requires CallbackAPIVersion as the first arg; fall back to 1.x API
+        try:
+            self._client = mqtt.Client(
+                mqtt.CallbackAPIVersion.VERSION1,
+                client_id=f"verdantiq-sim-{sensor_id}",
+                clean_session=True,
+            )
+        except AttributeError:
+            self._client = mqtt.Client(  # type: ignore[call-overload]
+                client_id=f"verdantiq-sim-{sensor_id}",
+                clean_session=True,
+            )
+
+        def _on_connect(client, userdata, flags, rc):
+            if rc == 0:
+                _log.info("Publisher[%s] connected to MQTT", sensor_id)
+            else:
+                _log.error("Publisher[%s] MQTT connect failed rc=%s", sensor_id, rc)
+
+        def _on_disconnect(client, userdata, rc):
+            if rc != 0:
+                _log.warning("Publisher[%s] unexpected MQTT disconnect rc=%s", sensor_id, rc)
+
+        self._client.on_connect    = _on_connect
+        self._client.on_disconnect = _on_disconnect
 
     def start(self) -> None:
         self._client.connect(self.mqtt_host, self.mqtt_port, keepalive=60)
@@ -218,8 +241,9 @@ class MQTTSensorPublisher:
             try:
                 payload = self._gen.generate(self.sensor_type, device_id=self.device_id,
                                              location=self.location)
-                payload["tenant_id"] = self.tenant_id
-                payload["sensor_id"] = self.sensor_id
+                payload["tenant_id"]   = self.tenant_id
+                payload["sensor_id"]   = self.sensor_id
+                payload["sensor_type"] = self.sensor_type
                 payload["hardware_info"] = {
                     "firmware_version":      self._firmware,
                     "mac_address":           self._mac,
