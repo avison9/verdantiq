@@ -441,7 +441,8 @@ services:
       - client
       - /opt/spark/jobs/sensor_streaming_job.py
     environment:
-      KAFKA_BROKERS:       "kafka1:9092,kafka2:9093,kafka3:9094,kafka4:9095"
+      SPARK_MODE:          submit
+      KAFKA_BROKERS:       "kafka1:9092,kafka2:9093"
       MINIO_ENDPOINT:      "http://minio:9000"
       MINIO_ROOT_USER:     ${MINIO_ROOT_USER:-admin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-myminiopassword}

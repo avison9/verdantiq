@@ -40,9 +40,9 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
-# simulator lives in the iot package (mounted into the container)
+# mqtt_publisher lives in the iot package (mounted into the container)
 sys.path.insert(0, "/app/iot")
-from simulator.simulator import MQTTSensorPublisher  # noqa: E402
+from simulator.mqtt_publisher import MQTTSensorPublisher  # noqa: E402
 
 load_dotenv(override=True)
 
