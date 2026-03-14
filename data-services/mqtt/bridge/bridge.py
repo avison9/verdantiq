@@ -121,7 +121,18 @@ def _on_message(client, userdata, msg: mqtt.MQTTMessage):
         log.error("Kafka produce error [%s]: %s", kafka_topic, exc)
 
 
-_mqtt_client = mqtt.Client(client_id="verdantiq-bridge", clean_session=False)
+# paho 2.x requires CallbackAPIVersion as the first arg; fall back to 1.x API
+try:
+    _mqtt_client = mqtt.Client(
+        mqtt.CallbackAPIVersion.VERSION1,
+        client_id="verdantiq-bridge",
+        clean_session=False,
+    )
+except AttributeError:
+    _mqtt_client = mqtt.Client(  # type: ignore[call-overload]
+        client_id="verdantiq-bridge",
+        clean_session=False,
+    )
 _mqtt_client.on_connect    = _on_connect
 _mqtt_client.on_disconnect = _on_disconnect
 _mqtt_client.on_message    = _on_message

@@ -60,16 +60,34 @@ KAFKA_TOPIC_PATTERN  = os.getenv("KAFKA_TOPIC_PATTERN",  r"verdantiq\..+")
 
 # Valid sensor types — maps canonical names used in Iceberg table names
 SENSOR_TYPE_MAP: dict[str, str] = {
-    "soil":        "soil",
-    "soil_sensor": "soil",
-    "co2":         "co2",
-    "co2_sensor":  "co2",
-    "weather":     "weather",
-    "weather_sensor": "weather",
-    "temperature": "temperature",
-    "temp_sensor": "temperature",
-    "environment": "environment",
-    "env_monitor": "environment",
+    "soil":               "soil",
+    "soil_sensor":        "soil",
+    "soil_moisture":      "soil",
+    "co2":                "co2",
+    "co2_sensor":         "co2",
+    "co2sensor":          "co2",
+    "weather":            "weather",
+    "weather_sensor":     "weather",
+    "weather_station":    "weather",
+    "temperature":        "temperature",
+    "temp_sensor":        "temperature",
+    "temperature_sensor": "temperature",
+    "environment":        "environment",
+    "env_monitor":        "environment",
+    "environment_sensor": "environment",
+    "environmental":      "environment",
+    "humidity":           "humidity",
+    "humidity_sensor":    "humidity",
+    "pressure":           "pressure",
+    "pressure_sensor":    "pressure",
+    "atmospheric":        "pressure",
+    "light":              "light",
+    "light_sensor":       "light",
+    "par_sensor":         "light",
+    "lux_sensor":         "light",
+    "flow":               "flow",
+    "flow_sensor":        "flow",
+    "water_flow":         "flow",
 }
 
 # ── SparkSession ──────────────────────────────────────────────────────────────
@@ -165,6 +183,10 @@ _METRICS_PATHS: dict[str, str] = {
     "weather":     "weather_data",
     "temperature": "temperature_data",
     "environment": "pollution_metrics",
+    "humidity":    "humidity_data",
+    "pressure":    "pressure_data",
+    "light":       "light_data",
+    "flow":        "flow_data",
 }
 
 
