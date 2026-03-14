@@ -203,6 +203,27 @@ services:
       timeout: 20s
       retries: 3
 
+  # ── MinIO bucket initialisation (runs once, then exits) ─────────────────────
+  minio-init:
+    image: minio/mc
+    container_name: minio-init
+    profiles: [dataservices, full]
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - verdantiq-net
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 $${MINIO_ROOT_USER:-admin} $${MINIO_ROOT_PASSWORD:-myminiopassword};
+        mc mb --ignore-existing local/bronze;
+        mc mb --ignore-existing local/iceberg;
+        echo 'MinIO buckets ready';
+      "
+    environment:
+      MINIO_ROOT_USER:     ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-myminiopassword}
+
   # ── Spark ───────────────────────────────────────────────────────────────────
   spark-master:
     build:
@@ -296,8 +317,8 @@ services:
       - CATALOG_S3_ENDPOINT=http://minio:9000
       - CATALOG_S3_PATH-STYLE-ACCESS=true
     depends_on:
-      minio:
-        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
     networks:
       - verdantiq-net
     healthcheck:
@@ -456,8 +477,8 @@ services:
         condition: service_healthy
       kafka1:
         condition: service_healthy
-      minio:
-        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
       iceberg-rest:
         condition: service_healthy
     networks:
