@@ -48,7 +48,7 @@ load_dotenv(override=True)
 
 # ── config ────────────────────────────────────────────────────────────────────
 
-KAFKA_BROKERS  = os.getenv("KAFKA_BROKERS",   "kafka1:9092,kafka2:9093,kafka3:9094,kafka4:9095")
+KAFKA_BROKERS  = os.getenv("KAFKA_BROKERS",   "kafka1:9092,kafka2:9093")
 BRIDGE_URL     = os.getenv("BRIDGE_URL",      "http://mqtt-bridge:8091")
 MQTT_HOST      = os.getenv("MQTT_HOST",       "mosquitto")
 MQTT_PORT      = int(os.getenv("MQTT_PORT",   "1883"))
@@ -75,7 +75,7 @@ def _create_kafka_topic(tenant_id: str, sensor_id: str) -> str:
     topic = f"verdantiq.{tenant_id}.{sensor_id}"
     admin = _get_admin()
     fs = admin.create_topics([
-        NewTopic(topic, num_partitions=3, replication_factor=3,
+        NewTopic(topic, num_partitions=2, replication_factor=2,
                  config={"retention.ms": "604800000", "cleanup.policy": "delete",
                          "compression.type": "lz4"})
     ])

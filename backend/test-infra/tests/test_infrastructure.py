@@ -11,8 +11,6 @@ Port map (host → container):
   Sensor service    localhost:8003  → sensor:8003
   Kafka broker 1    localhost:19092 → kafka1:9092
   Kafka broker 2    localhost:19093 → kafka2:9093
-  Kafka broker 3    localhost:19094 → kafka3:9094
-  Kafka broker 4    localhost:19095 → kafka4:9095
   Schema Registry   localhost:8089  → schema-registry:8089
   MinIO API         localhost:9000  → minio:9000
   Trino             localhost:8085  → trino:8080
@@ -52,7 +50,7 @@ MQTT_WS_PORT        = int(os.getenv("MQTT_WS_PORT",   "9003"))
 BRIDGE_URL          = os.getenv("BRIDGE_URL",          "http://localhost:8091")
 DATA_SERVICE_URL    = os.getenv("DATA_SERVICE_URL",    "http://localhost:8090")
 
-KAFKA_BROKERS       = os.getenv("KAFKA_BROKERS",       "localhost:19092,localhost:19093,localhost:19094,localhost:19095")
+KAFKA_BROKERS       = os.getenv("KAFKA_BROKERS",       "localhost:19092,localhost:19093")
 SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL", "http://localhost:8089")
 MINIO_ENDPOINT      = os.getenv("MINIO_ENDPOINT",      "localhost:9000")
 MINIO_ACCESS_KEY    = os.getenv("MINIO_ROOT_USER",     "admin")
@@ -235,7 +233,7 @@ def test_postgres_tenant_name_unique(pg_conn):
 
 def test_kafka_all_brokers_reachable():
     """All 4 Kafka brokers must accept TCP connections on their published ports."""
-    for port in [19092, 19093, 19094, 19095]:
+    for port in [19092, 19093]:
         assert wait_for_service("localhost", port, f"kafka broker:{port}", timeout=30), \
             f"Kafka broker on port {port} not reachable"
 
@@ -243,7 +241,7 @@ def test_kafka_all_brokers_reachable():
 def test_kafka_produce_consume(kafka_admin):
     """Create topic → produce JSON payload → consume → verify content → delete topic."""
     topic = f"{TEST_TOPIC}.produce_consume"
-    fs = kafka_admin.create_topics([NewTopic(topic, num_partitions=3, replication_factor=3)])
+    fs = kafka_admin.create_topics([NewTopic(topic, num_partitions=2, replication_factor=2)])
     for t, f in fs.items():
         try:
             f.result()
@@ -278,16 +276,16 @@ def test_kafka_produce_consume(kafka_admin):
 
 
 def test_kafka_topic_replication(kafka_admin):
-    """Topic with replication_factor=3 must have ≥3 in-sync replicas per partition."""
+    """Topic with replication_factor=2 must have ≥2 in-sync replicas per partition."""
     topic = f"{TEST_TOPIC}.replication"
-    kafka_admin.create_topics([NewTopic(topic, num_partitions=1, replication_factor=3)])
+    kafka_admin.create_topics([NewTopic(topic, num_partitions=1, replication_factor=2)])
     time.sleep(3)
 
     meta = kafka_admin.list_topics(topic=topic, timeout=10)
     tp_meta = meta.topics.get(topic)
     assert tp_meta is not None, f"Topic {topic} not found in metadata"
     for partition in tp_meta.partitions.values():
-        assert len(partition.isrs) >= 3, (
+        assert len(partition.isrs) >= 2, (
             f"Partition {partition.id} only has {len(partition.isrs)} ISR(s)"
         )
     kafka_admin.delete_topics([topic])
@@ -296,7 +294,7 @@ def test_kafka_topic_replication(kafka_admin):
 def test_kafka_multi_broker_failover(kafka_admin):
     """Produce to a topic whose leader is on broker 1; consumer must still receive after leader info refresh."""
     topic = f"{TEST_TOPIC}.failover"
-    kafka_admin.create_topics([NewTopic(topic, num_partitions=1, replication_factor=3)])
+    kafka_admin.create_topics([NewTopic(topic, num_partitions=1, replication_factor=2)])
     time.sleep(3)
 
     # Produce via full broker list — Kafka client will discover and use the leader
@@ -1136,7 +1134,7 @@ def test_prometheus_kafka_brokers_metric():
     results = r.json()["data"]["result"]
     if results:
         broker_count = int(float(results[0]["value"][1]))
-        assert broker_count >= 4, f"Expected ≥4 Kafka brokers, got {broker_count}"
+        assert broker_count >= 2, f"Expected ≥2 Kafka brokers, got {broker_count}"
 
 
 # =============================================================================
@@ -1194,7 +1192,7 @@ def test_kafka_exporter_reports_correct_broker_count():
     for line in r.text.splitlines():
         if line.startswith("kafka_brokers "):
             count = int(float(line.split()[-1]))
-            assert count == 4, f"Expected 4 Kafka brokers, exporter reports {count}"
+            assert count == 2, f"Expected 2 Kafka brokers, exporter reports {count}"
             return
     pytest.fail("kafka_brokers metric line not found in exporter output")
 
