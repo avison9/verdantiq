@@ -4,7 +4,7 @@ set -e
 
 echo "Waiting for Kafka brokers to be available..."
 
-for host in kafka1:9092 kafka2:9093 kafka3:9094 kafka4:9095; do
+for host in kafka1:9092 kafka2:9093; do
   while ! nc -z ${host%:*} ${host#*:}; do
     echo "Waiting for $host..."
     sleep 2
