@@ -475,7 +475,7 @@ class SensorSimulator:
 
     def __init__(self):
         self._setup_logging()
-        self.kafka_brokers        = os.getenv("KAFKA_BROKER", "kafka1:9092,kafka2:9092,kafka3:9092,kafka4:9092")
+        self.kafka_brokers        = os.getenv("KAFKA_BROKER", "kafka1:9092,kafka2:9093")
         self.schema_registry_url  = os.getenv("SCHEMA_REGISTRY_URL", "http://schema-registry:8089")
         self.max_retries          = int(os.getenv("MAX_RETRIES", "5"))
         self.retry_delay          = int(os.getenv("RETRY_DELAY", "2"))
