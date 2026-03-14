@@ -49,10 +49,12 @@ load_dotenv(override=True)
 
 # ── config ────────────────────────────────────────────────────────────────────
 
-KAFKA_BROKERS  = os.getenv("KAFKA_BROKERS",   "kafka1:9092,kafka2:9093")
-BRIDGE_URL     = os.getenv("BRIDGE_URL",      "http://mqtt-bridge:8091")
-MQTT_HOST      = os.getenv("MQTT_HOST",       "mosquitto")
-MQTT_PORT      = int(os.getenv("MQTT_PORT",   "1883"))
+KAFKA_BROKERS       = os.getenv("KAFKA_BROKERS",       "kafka1:9092,kafka2:9093")
+BRIDGE_URL          = os.getenv("BRIDGE_URL",          "http://mqtt-bridge:8091")
+MQTT_HOST           = os.getenv("MQTT_HOST",           "mosquitto")
+MQTT_PORT           = int(os.getenv("MQTT_PORT",       "1883"))
+SENSOR_SERVICE_URL  = os.getenv("SENSOR_SERVICE_URL",  "http://sensor:8003")
+MSG_FLUSH_EVERY     = int(os.getenv("MSG_FLUSH_EVERY", "5"))
 
 logging.basicConfig(
     level=logging.INFO,
@@ -64,6 +66,21 @@ log = logging.getLogger("data-service")
 # ── in-process simulator registry ────────────────────────────────────────────
 # sensor_key → MQTTSensorPublisher
 _active: Dict[str, MQTTSensorPublisher] = {}
+
+# ── per-sensor Kafka message counter ─────────────────────────────────────────
+# Accumulates counts and flushes to sensor service every MSG_FLUSH_EVERY msgs
+_msg_counts: Dict[str, int] = {}
+
+
+async def _flush_message_count(sensor_id: str, count: int) -> None:
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            await client.post(
+                f"{SENSOR_SERVICE_URL}/internal/sensors/{sensor_id}/messages",
+                json={"message_increment": count},
+            )
+    except Exception as exc:
+        log.warning("Message count flush failed for sensor %s: %s", sensor_id, exc)
 
 
 # ── Kafka admin client ────────────────────────────────────────────────────────
@@ -134,6 +151,8 @@ class ConnectResponse(BaseModel):
     kafka_topic: str
     ws_url:      str
     status:      str
+    protocol:    str
+    data_format: str
 
 
 # ── FastAPI app ───────────────────────────────────────────────────────────────
@@ -242,6 +261,8 @@ async def connect_sensor(body: ConnectRequest):
         kafka_topic=kafka_topic,
         ws_url=f"ws://localhost:8090/ws/{body.tenant_id}/{body.sensor_id}",
         status="streaming",
+        protocol="mqtt",
+        data_format="json",
     )
 
 
@@ -282,6 +303,7 @@ async def websocket_stream(websocket: WebSocket, tenant_id: str, sensor_id: str)
         enable_auto_commit=False,
         consumer_timeout_ms=1000,
     )
+    pending_count = 0
     try:
         await consumer.start()
         async for msg in consumer:
@@ -296,6 +318,13 @@ async def websocket_stream(websocket: WebSocket, tenant_id: str, sensor_id: str)
                     "payload":   json.loads(text),
                 })
                 await websocket.send_text(envelope)
+
+                # Count messages and flush to sensor service periodically
+                pending_count += 1
+                if pending_count >= MSG_FLUSH_EVERY:
+                    asyncio.create_task(_flush_message_count(sensor_id, pending_count))
+                    pending_count = 0
+
             except WebSocketDisconnect:
                 log.info("WebSocket closed for %s", topic)
                 break
@@ -305,6 +334,9 @@ async def websocket_stream(websocket: WebSocket, tenant_id: str, sensor_id: str)
     except Exception as exc:
         log.error("Kafka consumer error [%s]: %s", topic, exc)
     finally:
+        # Flush any remaining count on disconnect
+        if pending_count > 0:
+            asyncio.create_task(_flush_message_count(sensor_id, pending_count))
         try:
             await consumer.stop()
         except Exception:
