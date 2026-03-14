@@ -474,13 +474,13 @@ services:
       dockerfile: data-services/spark/Dockerfile.spark
     container_name: sensor-streaming
     profiles: [dataservices, full]
-    command: >
-      /opt/spark/bin/spark-submit
-        --master spark://spark-master:7077
-        --deploy-mode client
-        --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,
-                   org.apache.kafka:kafka-clients:3.5.0
-        /opt/spark/jobs/sensor_streaming_job.py
+    command:
+      - /opt/spark/bin/spark-submit
+      - --master
+      - spark://spark-master:7077
+      - --deploy-mode
+      - client
+      - /opt/spark/jobs/sensor_streaming_job.py
     environment:
       KAFKA_BROKERS:       "kafka1:9092,kafka2:9093,kafka3:9094,kafka4:9095"
       MINIO_ENDPOINT:      "http://minio:9000"
