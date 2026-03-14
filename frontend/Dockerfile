@@ -17,6 +17,8 @@ RUN npm run build
 # ── Serve with nginx ──────────────────────────────────────────────────────────
 FROM nginx:1.27-alpine
 
+RUN apk add --no-cache curl
+
 COPY --from=builder /app/dist /usr/share/nginx/html
 
 # SPA fallback — all routes serve index.html
