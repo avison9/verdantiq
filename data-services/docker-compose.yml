@@ -397,7 +397,7 @@ services:
     networks:
       - verdantiq-net
     healthcheck:
-      test: ["CMD-SHELL", "mosquitto_pub -h localhost -t health/check -m ping -q 0 || exit 1"]
+      test: ["CMD-SHELL", "nc -z localhost 1883 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5

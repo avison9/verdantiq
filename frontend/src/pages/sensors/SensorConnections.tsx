@@ -177,18 +177,19 @@ const SensorConnections = () => {
     // Step 0 — register connection in backend (logs connection_initiated event)
     try {
       await initiateConnection(sid).unwrap();
+      setStep(sid, 0, "done");
     } catch {
-      // non-fatal — backend event logging; continue to data service
+      // non-fatal — continue to data service regardless
+      setStep(sid, 0, "done");
     }
-    setStep(sid, 0, "done");
-    setStep(sid, 1, "in_progress");
 
-    // Steps 1-4 — data service orchestrates MQTT + Kafka + simulator + Spark
-    // We advance the visual steps with small delays while waiting for the HTTP response.
+    // Steps 1-4: timers only advance the spinner to the next step.
+    // They never mark "done" — only a confirmed HTTP 201 does that.
+    setStep(sid, 1, "in_progress");
     const timers: ReturnType<typeof setTimeout>[] = [];
-    timers.push(setTimeout(() => { setStep(sid, 1, "done"); setStep(sid, 2, "in_progress"); }, 700));
-    timers.push(setTimeout(() => { setStep(sid, 2, "done"); setStep(sid, 3, "in_progress"); }, 1400));
-    timers.push(setTimeout(() => { setStep(sid, 3, "done"); setStep(sid, 4, "in_progress"); }, 2100));
+    timers.push(setTimeout(() => setStep(sid, 2, "in_progress"), 900));
+    timers.push(setTimeout(() => setStep(sid, 3, "in_progress"), 1800));
+    timers.push(setTimeout(() => setStep(sid, 4, "in_progress"), 2700));
 
     try {
       const payload = {
@@ -208,17 +209,17 @@ const SensorConnections = () => {
         body:    JSON.stringify(payload),
       });
 
+      // Cancel any pending spinner advances — result is known
       timers.forEach(clearTimeout);
 
       if (!resp.ok) {
         const errText = await resp.text();
-        throw new Error(errText);
+        throw new Error(`${resp.status}: ${errText}`);
       }
 
       const result = await resp.json();
 
-      // Step 4 done → step 5 (pipeline ready)
-      setStep(sid, 4, "done");
+      // HTTP 201 confirmed — now mark every step done
       setStep(sid, 5, "in_progress");
       setTimeout(() => {
         markAllDone(sid, {
@@ -226,7 +227,7 @@ const SensorConnections = () => {
           kafkaTopic: result.kafka_topic,
         });
         toast.success("Sensor pipeline is live!");
-      }, 400);
+      }, 350);
 
     } catch (err) {
       timers.forEach(clearTimeout);
