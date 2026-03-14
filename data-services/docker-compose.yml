@@ -390,7 +390,7 @@ services:
     profiles: [dataservices, full]
     ports:
       - "1883:1883"   # MQTT
-      - "9001:9001"   # WebSocket
+      - "9003:9003"   # WebSocket (9001 is taken by MinIO console)
     volumes:
       - ./mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - mosquitto_data:/mosquitto/data

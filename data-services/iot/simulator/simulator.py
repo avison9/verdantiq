@@ -67,21 +67,40 @@ class SensorDataGenerator:
                                           "field_id": "farm_plot_A1"})
     """
 
-    SENSOR_TYPES = {"soil", "co2", "weather", "temperature", "environment"}
+    SENSOR_TYPES = {"soil", "co2", "weather", "temperature", "environment",
+                     "humidity", "pressure", "light", "flow"}
 
     # type aliases accepted by generate()
     _ALIASES: dict[str, str] = {
-        "soil_moisture": "soil",
-        "soil_sensor": "soil",
-        "co2_sensor": "co2",
-        "co2sensor": "co2",
-        "weather_station": "weather",
-        "weather_sensor": "weather",
-        "temp_sensor": "temperature",
+        # soil
+        "soil_moisture":      "soil",
+        "soil_sensor":        "soil",
+        # co2
+        "co2_sensor":         "co2",
+        "co2sensor":          "co2",
+        # weather
+        "weather_station":    "weather",
+        "weather_sensor":     "weather",
+        # temperature
+        "temp_sensor":        "temperature",
         "temperature_sensor": "temperature",
-        "env_monitor": "environment",
+        # environment
+        "env_monitor":        "environment",
         "environment_sensor": "environment",
-        "environmental": "environment",
+        "environmental":      "environment",
+        "other":              "environment",
+        # humidity
+        "humidity_sensor":    "humidity",
+        # pressure
+        "pressure_sensor":    "pressure",
+        "atmospheric":        "pressure",
+        # light
+        "light_sensor":       "light",
+        "par_sensor":         "light",
+        "lux_sensor":         "light",
+        # flow
+        "flow_sensor":        "flow",
+        "water_flow":         "flow",
     }
 
     def generate(
@@ -210,6 +229,106 @@ class SensorDataGenerator:
                 "battery_percent":     _r(20, 100, 0),
                 "uptime_hours":        random.randint(1, 8760),
                 "signal_strength_dbm": _r(-90, -40, 0),
+            },
+        }
+
+    def _generate_humidity(
+        self, *, device_id: str, location: dict
+    ) -> dict[str, Any]:
+        return {
+            "device_id": device_id,
+            "timestamp": _ts(),
+            "location": {
+                "latitude":  location.get("latitude",  7.3775),
+                "longitude": location.get("longitude", 3.9470),
+                "site":      location.get("site",      "greenhouse_1"),
+            },
+            "humidity_data": {
+                "humidity_percent":       _r(20, 100),
+                "temperature_c":          _r(10, 45),
+                "absolute_humidity_g_m3": _r(5, 30),
+                "dew_point_c":            _r(5, 30),
+                "heat_index_c":           _r(15, 55),
+            },
+            "device_status": {
+                "battery_percent":     _r(20, 100, 0),
+                "signal_strength_dbm": _r(-90, -40, 0),
+            },
+        }
+
+    def _generate_pressure(
+        self, *, device_id: str, location: dict
+    ) -> dict[str, Any]:
+        return {
+            "device_id": device_id,
+            "timestamp": _ts(),
+            "location": {
+                "latitude":    location.get("latitude",    7.3775),
+                "longitude":   location.get("longitude",   3.9470),
+                "elevation_m": location.get("elevation_m", 100),
+            },
+            "pressure_data": {
+                "atmospheric_hpa":      _r(980, 1040),
+                "sea_level_hpa":        _r(990, 1050),
+                "altitude_m":           _r(0, 500),
+                "pressure_trend":       random.choice(["rising", "falling", "steady"]),
+                "temperature_c":        _r(10, 45),
+            },
+            "device_status": {
+                "battery_percent":     _r(20, 100, 0),
+                "signal_strength_dbm": _r(-90, -40, 0),
+            },
+        }
+
+    def _generate_light(
+        self, *, device_id: str, location: dict
+    ) -> dict[str, Any]:
+        return {
+            "device_id": device_id,
+            "timestamp": _ts(),
+            "location": {
+                "latitude":  location.get("latitude",  7.3775),
+                "longitude": location.get("longitude", 3.9470),
+                "site":      location.get("site",      "field_north"),
+            },
+            "light_data": {
+                "lux":                   _r(0, 100000),
+                "par_umol_m2_s":         _r(0, 2500),
+                "uv_index":              _r(0, 11, 1),
+                "infrared_w_m2":         _r(0, 800),
+                "visible_spectrum_lux":  _r(0, 100000),
+                "photoperiod_hours":     _r(0, 24, 1),
+            },
+            "device_status": {
+                "battery_percent":     _r(20, 100, 0),
+                "signal_strength_dbm": _r(-90, -40, 0),
+            },
+        }
+
+    def _generate_flow(
+        self, *, device_id: str, location: dict
+    ) -> dict[str, Any]:
+        flow_rate = _r(0, 50)
+        return {
+            "device_id": device_id,
+            "timestamp": _ts(),
+            "location": {
+                "site":    location.get("site",    "irrigation_main"),
+                "zone":    location.get("zone",    "zone_1"),
+                "pipe_id": location.get("pipe_id", "pipe_001"),
+            },
+            "flow_data": {
+                "flow_rate_l_min":       flow_rate,
+                "cumulative_volume_l":   _r(0, 100000),
+                "velocity_m_s":          _r(0, 5),
+                "pressure_bar":          _r(0, 10),
+                "temperature_c":         _r(5, 40),
+                "turbidity_ntu":         _r(0, 100),
+            },
+            "device_status": {
+                "battery_percent":     _r(20, 100, 0),
+                "signal_strength_dbm": _r(-90, -40, 0),
+                "valve_open":          random.choice([True, True, True, False]),
             },
         }
 
