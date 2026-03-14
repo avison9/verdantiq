@@ -22,10 +22,23 @@ function useTick(ms = 1000) {
   }, [ms]);
 }
 
+// ── UTC-safe date parser ──────────────────────────────────────────────────────
+// The backend returns timestamps without the trailing "Z" (e.g. "2026-03-14T10:15:30").
+// Without the Z, browsers parse the string as *local time*, making every event
+// appear offset by the local UTC offset (e.g. 1 h in WAT/UTC+1).
+// We force UTC interpretation by appending "Z" if no timezone is present.
+
+function toUtcDate(iso: string): Date {
+  // Already has timezone info (+HH:MM or Z) — leave as-is
+  if (/[Z+]/.test(iso.slice(10))) return new Date(iso);
+  // No timezone — treat as UTC
+  return new Date(iso + "Z");
+}
+
 // ── Relative time (seconds-precision, always current because of useTick) ──────
 
 function formatRelative(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime();
+  const diffMs = Date.now() - toUtcDate(iso).getTime();
   const secs   = Math.floor(diffMs / 1000);
   const mins   = Math.floor(diffMs / 60_000);
   const hours  = Math.floor(diffMs / 3_600_000);
@@ -39,7 +52,7 @@ function formatRelative(iso: string): string {
 
 // Short absolute date shown inline: "14 Mar 2026, 10:15:30"
 function formatShort(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
+  return toUtcDate(iso).toLocaleString(undefined, {
     day:    "numeric",
     month:  "short",
     year:   "numeric",
