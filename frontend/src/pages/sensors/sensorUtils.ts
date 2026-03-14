@@ -7,15 +7,16 @@ export const STATUS_STYLES: Record<string, string> = {
 };
 
 export const SENSOR_TYPE_ICONS: Record<string, string> = {
-  temperature: "🌡️",
-  humidity:    "💧",
-  soil:        "🌱",
-  weather:     "🌤️",
-  pressure:    "🔵",
-  light:       "☀️",
-  co2:         "🌫️",
-  flow:        "💦",
-  default:     "📡",
+  temperature:  "🌡️",
+  humidity:     "💧",
+  soil:         "🌱",
+  weather:      "🌤️",
+  pressure:     "🔵",
+  light:        "☀️",
+  co2:          "🌫️",
+  flow:         "💦",
+  environment:  "🍃",
+  default:      "📡",
 };
 
 export function sensorIcon(type: string): string {

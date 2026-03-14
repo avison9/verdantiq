@@ -7,9 +7,40 @@ import {
   useGetSensorsQuery,
   useUpdateSensorStatusMutation,
   useInitiateConnectionMutation,
+  type Sensor,
   type SensorStatus,
 } from "../../redux/apislices/userDashboardApiSlice";
 import { STATUS_STYLES, sensorIcon } from "./sensorUtils";
+
+const DATA_SERVICE_URL = import.meta.env.VITE_DATA_SERVICE_URL ?? "http://localhost:8090";
+
+// ── Pipeline step config ───────────────────────────────────────────────────────
+
+const PIPELINE_STEPS = [
+  "Registering connection",
+  "Creating MQTT topic",
+  "Creating Kafka topic",
+  "Starting IoT simulator",
+  "Activating Spark consumer",
+  "Pipeline ready",
+] as const;
+
+type StepStatus = "idle" | "in_progress" | "done" | "error";
+
+interface PipelineState {
+  steps:     StepStatus[];
+  error?:    string;
+  done:      boolean;
+  mqttTopic?:  string;
+  kafkaTopic?: string;
+}
+
+const initPipeline = (): PipelineState => ({
+  steps: PIPELINE_STEPS.map(() => "idle" as StepStatus),
+  done:  false,
+});
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 const STATUS_DOT: Record<string, string> = {
   pending:     "bg-orange-400",
@@ -28,11 +59,8 @@ function CopyButton({ value }: { value: string }) {
     });
   };
   return (
-    <button
-      onClick={copy}
-      title="Copy"
-      className="ml-1 p-0.5 text-gray-300 hover:text-gray-500 transition-colors"
-    >
+    <button onClick={copy} title="Copy"
+      className="ml-1 p-0.5 text-gray-300 hover:text-gray-500 transition-colors">
       {copied ? (
         <svg className="w-3 h-3 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -46,6 +74,31 @@ function CopyButton({ value }: { value: string }) {
     </button>
   );
 }
+
+// ── Step indicator ────────────────────────────────────────────────────────────
+
+function StepRow({ label, status }: { label: string; status: StepStatus }) {
+  const icon =
+    status === "done"       ? <span className="text-emerald-500">✓</span> :
+    status === "in_progress"? <span className="animate-spin inline-block text-yellow-500">⟳</span> :
+    status === "error"      ? <span className="text-red-500">✕</span> :
+                              <span className="text-gray-300">○</span>;
+
+  const textCls =
+    status === "done"        ? "text-gray-700" :
+    status === "in_progress" ? "text-yellow-700 font-medium" :
+    status === "error"       ? "text-red-600" :
+    "text-gray-400";
+
+  return (
+    <div className="flex items-center gap-2 py-0.5">
+      <span className="w-4 text-center text-xs leading-none">{icon}</span>
+      <span className={`text-xs ${textCls}`}>{label}</span>
+    </div>
+  );
+}
+
+// ── Pagination ────────────────────────────────────────────────────────────────
 
 const PER_PAGE_OPTIONS = [5, 10, 20] as const;
 
@@ -61,38 +114,126 @@ function buildPageRange(current: number, total: number): (number | "...")[] {
   return pages;
 }
 
+// ── Main component ────────────────────────────────────────────────────────────
+
 const SensorConnections = () => {
   usePageTitle("Sensor Connections — VerdantIQ");
   const navigate = useNavigate();
 
-  const [page, setPage] = useState(1);
+  const [page,    setPage]    = useState(1);
   const [perPage, setPerPage] = useState<(typeof PER_PAGE_OPTIONS)[number]>(10);
 
-  const { data: me } = useGetMeQuery();
-  const { data, isLoading, isFetching } = useGetSensorsQuery(
+  const { data: me }                          = useGetMeQuery();
+  const { data, isLoading, isFetching }       = useGetSensorsQuery(
     { tenant_id: me?.tenant_id ?? 0, page, per_page: perPage },
     { skip: !me },
   );
-  const [updateStatus] = useUpdateSensorStatusMutation();
-  const [initiateConnection] = useInitiateConnectionMutation();
-  const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const [connectingId, setConnectingId] = useState<string | null>(null);
+  const [updateStatus]                        = useUpdateSensorStatusMutation();
+  const [initiateConnection]                  = useInitiateConnectionMutation();
+
+  const [updatingId,  setUpdatingId]          = useState<string | null>(null);
+  // pipeline state keyed by sensor_id
+  const [pipelines, setPipelines]             = useState<Record<string, PipelineState>>({});
 
   const sensors    = data?.items ?? [];
   const total      = data?.total ?? 0;
   const totalPages = data?.pages ?? 1;
   const pageRange  = buildPageRange(page, totalPages);
 
-  const handleConnect = async (sensor_id: string) => {
-    setConnectingId(sensor_id);
+  // advance a single step to in_progress
+  const setStep = (sid: string, idx: number, status: StepStatus) =>
+    setPipelines(prev => {
+      const p = { ...(prev[sid] ?? initPipeline()) };
+      const steps = [...p.steps] as StepStatus[];
+      steps[idx] = status;
+      return { ...prev, [sid]: { ...p, steps } };
+    });
+
+  const markAllDone = (sid: string, extras: Partial<PipelineState> = {}) =>
+    setPipelines(prev => ({
+      ...prev,
+      [sid]: {
+        ...(prev[sid] ?? initPipeline()),
+        steps: PIPELINE_STEPS.map(() => "done" as StepStatus),
+        done:  true,
+        ...extras,
+      },
+    }));
+
+  const markError = (sid: string, error: string) =>
+    setPipelines(prev => {
+      const p = { ...(prev[sid] ?? initPipeline()) };
+      const steps = p.steps.map(s => s === "in_progress" ? "error" : s) as StepStatus[];
+      return { ...prev, [sid]: { ...p, steps, error, done: false } };
+    });
+
+  // ── connect handler ────────────────────────────────────────────────────────
+
+  const handleConnect = async (sensor: Sensor) => {
+    const sid = sensor.sensor_id;
+    setPipelines(prev => ({ ...prev, [sid]: initPipeline() }));
+    setStep(sid, 0, "in_progress");
+
+    // Step 0 — register connection in backend (logs connection_initiated event)
     try {
-      await initiateConnection(sensor_id).unwrap();
-      toast.success("Connection setup initiated — configure your device with the token below.");
-      navigate(`/sensors/${sensor_id}/connection`);
+      await initiateConnection(sid).unwrap();
     } catch {
-      toast.error("Failed to initiate connection");
+      // non-fatal — backend event logging; continue to data service
     }
-    setConnectingId(null);
+    setStep(sid, 0, "done");
+    setStep(sid, 1, "in_progress");
+
+    // Steps 1-4 — data service orchestrates MQTT + Kafka + simulator + Spark
+    // We advance the visual steps with small delays while waiting for the HTTP response.
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    timers.push(setTimeout(() => { setStep(sid, 1, "done"); setStep(sid, 2, "in_progress"); }, 700));
+    timers.push(setTimeout(() => { setStep(sid, 2, "done"); setStep(sid, 3, "in_progress"); }, 1400));
+    timers.push(setTimeout(() => { setStep(sid, 3, "done"); setStep(sid, 4, "in_progress"); }, 2100));
+
+    try {
+      const payload = {
+        sensor_id:   sid,
+        tenant_id:   sensor.tenant_id,
+        sensor_type: sensor.sensor_type,
+        device_id:   sid,
+        location: {
+          latitude:  parseFloat(String(sensor.sensor_metadata?.latitude  ?? 0)) || 0,
+          longitude: parseFloat(String(sensor.sensor_metadata?.longitude ?? 0)) || 0,
+        },
+      };
+
+      const resp = await fetch(`${DATA_SERVICE_URL}/sensors/connect`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(payload),
+      });
+
+      timers.forEach(clearTimeout);
+
+      if (!resp.ok) {
+        const errText = await resp.text();
+        throw new Error(errText);
+      }
+
+      const result = await resp.json();
+
+      // Step 4 done → step 5 (pipeline ready)
+      setStep(sid, 4, "done");
+      setStep(sid, 5, "in_progress");
+      setTimeout(() => {
+        markAllDone(sid, {
+          mqttTopic:  result.mqtt_topic,
+          kafkaTopic: result.kafka_topic,
+        });
+        toast.success("Sensor pipeline is live!");
+      }, 400);
+
+    } catch (err) {
+      timers.forEach(clearTimeout);
+      const msg = err instanceof Error ? err.message : String(err);
+      markError(sid, msg);
+      toast.error(`Pipeline setup failed: ${msg}`);
+    }
   };
 
   const handleStatusChange = async (sensor_id: string, newStatus: SensorStatus) => {
@@ -106,9 +247,10 @@ const SensorConnections = () => {
     setUpdatingId(null);
   };
 
+  // ── render ────────────────────────────────────────────────────────────────
+
   return (
     <div className="px-6 py-8">
-      {/* Header */}
       <div className="mb-8">
         <h1 className="text-lg font-semibold text-gray-800">Sensor Connections</h1>
         <p className="text-sm text-gray-400 mt-0.5">
@@ -116,15 +258,14 @@ const SensorConnections = () => {
         </p>
       </div>
 
-      {/* Info banner */}
       <div className="mb-6 flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 text-sm text-amber-800 max-w-3xl">
         <svg className="w-4 h-4 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
             d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         <span>
-          Data services integration is pending. Once connected, your sensor status will update automatically when data starts flowing.
-          Use the <strong>Device Token</strong> to configure your hardware, then click <strong>Connect to Network</strong> to begin setup.
+          Use the <strong>Device Token</strong> to configure your hardware, then click{" "}
+          <strong>Connect to Network</strong> to provision the full IoT pipeline (MQTT → Kafka → Spark → Iceberg).
         </span>
       </div>
 
@@ -136,14 +277,14 @@ const SensorConnections = () => {
         <div className={`space-y-4 max-w-3xl transition-opacity ${isFetching ? "opacity-60" : ""}`}>
           {sensors.map((s) => {
             const messageTopic = `verdantiq.sensors.${me?.tenant_id}.${s.sensor_id}`;
-            const isUpdating  = updatingId === s.sensor_id;
-            const isConnecting = connectingId === s.sensor_id;
+            const isUpdating   = updatingId  === s.sensor_id;
+            const pipeline     = pipelines[s.sensor_id];
+            const isConnecting = pipeline && !pipeline.done && !pipeline.error;
 
             return (
-              <div
-                key={s.sensor_id}
-                className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4"
-              >
+              <div key={s.sensor_id}
+                className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4">
+
                 {/* Card header */}
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
@@ -176,15 +317,13 @@ const SensorConnections = () => {
                   <div className="flex items-center justify-between">
                     <span className="text-gray-400 uppercase tracking-wide">Device Token</span>
                     <span className="flex items-center font-mono text-gray-600">
-                      {s.mqtt_token.slice(0, 16)}…
-                      <CopyButton value={s.mqtt_token} />
+                      {s.mqtt_token.slice(0, 16)}…<CopyButton value={s.mqtt_token} />
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-gray-400 uppercase tracking-wide">Message Channel</span>
                     <span className="flex items-center font-mono text-gray-600 text-right max-w-[240px] truncate">
-                      {messageTopic}
-                      <CopyButton value={messageTopic} />
+                      {messageTopic}<CopyButton value={messageTopic} />
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
@@ -197,26 +336,69 @@ const SensorConnections = () => {
                   </div>
                 </div>
 
+                {/* ── Pipeline progress panel ── */}
+                {pipeline && (
+                  <div className="mb-4 bg-gray-50 border border-gray-100 rounded-xl px-4 py-3">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                      Pipeline Setup
+                    </p>
+                    <div className="space-y-0">
+                      {PIPELINE_STEPS.map((label, i) => (
+                        <StepRow key={i} label={label} status={pipeline.steps[i]} />
+                      ))}
+                    </div>
+                    {pipeline.done && pipeline.mqttTopic && (
+                      <div className="mt-3 pt-2 border-t border-gray-100 space-y-1">
+                        <p className="text-xs text-gray-500">
+                          <span className="text-gray-400">MQTT  </span>
+                          <span className="font-mono">{pipeline.mqttTopic}</span>
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          <span className="text-gray-400">Kafka </span>
+                          <span className="font-mono">{pipeline.kafkaTopic}</span>
+                        </p>
+                        <p className="text-xs text-emerald-600 font-medium mt-1">
+                          ✓ Data is flowing — open{" "}
+                          <button
+                            onClick={() => navigate(`/sensors/${s.sensor_id}`)}
+                            className="underline hover:text-emerald-700"
+                          >
+                            Sensor Detail
+                          </button>{" "}
+                          to see the live terminal.
+                        </p>
+                      </div>
+                    )}
+                    {pipeline.error && (
+                      <p className="mt-2 text-xs text-red-600 break-all">{pipeline.error}</p>
+                    )}
+                  </div>
+                )}
+
                 {/* Actions */}
                 <div className="border-t border-gray-50 pt-3 flex items-center justify-between">
                   <p className="text-xs text-gray-400">
-                    {s.status === "pending"
+                    {pipeline?.done
+                      ? "Pipeline live — data streaming to Iceberg."
+                      : s.status === "pending"
                       ? "Configure your device with the token above, then connect it to the network."
                       : s.status === "active"
                       ? "Sensor is connected and data is flowing."
                       : "Reconnect your device to resume data flow."}
                   </p>
                   <div className="flex items-center gap-2 shrink-0 ml-4">
-                    {s.status === "pending" && (
+                    {(s.status === "pending" || s.status === "inactive" || s.status === "error") && !pipeline?.done && (
                       <button
-                        disabled={isConnecting}
-                        onClick={() => handleConnect(s.sensor_id)}
+                        disabled={!!isConnecting}
+                        onClick={() => handleConnect(s)}
                         className="text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
                       >
-                        {isConnecting ? "Setting up…" : "Connect to Network"}
+                        {isConnecting ? "Setting up…" :
+                         s.status === "inactive" || s.status === "error" ? "Reconnect to Network" :
+                         "Connect to Network"}
                       </button>
                     )}
-                    {s.status === "active" && (
+                    {s.status === "active" && !pipeline && (
                       <button
                         disabled={isUpdating}
                         onClick={() => handleStatusChange(s.sensor_id, "inactive")}
@@ -225,17 +407,9 @@ const SensorConnections = () => {
                         {isUpdating ? "Updating…" : "Deactivate"}
                       </button>
                     )}
-                    {(s.status === "inactive" || s.status === "error") && (
-                      <button
-                        disabled={isConnecting}
-                        onClick={() => handleConnect(s.sensor_id)}
-                        className="text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
-                      >
-                        {isConnecting ? "Setting up…" : "Reconnect to Network"}
-                      </button>
-                    )}
                   </div>
                 </div>
+
               </div>
             );
           })}
@@ -244,41 +418,30 @@ const SensorConnections = () => {
           {totalPages > 1 && (
             <div className="pt-4 flex items-center justify-between gap-4 flex-wrap">
               <div className="flex items-center gap-1.5 flex-wrap">
-                <button
-                  disabled={page === 1}
-                  onClick={() => setPage((p) => p - 1)}
-                  className="w-5 h-5 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-xs"
-                >‹</button>
+                <button disabled={page === 1} onClick={() => setPage(p => p - 1)}
+                  className="w-5 h-5 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-xs">‹</button>
 
                 {pageRange.map((p, idx) =>
                   p === "..." ? (
                     <span key={`e-${idx}`} className="w-5 h-5 flex items-center justify-center text-gray-400 text-xs">…</span>
                   ) : (
-                    <button
-                      key={p}
-                      onClick={() => setPage(p)}
+                    <button key={p} onClick={() => setPage(p)}
                       className={`w-5 h-5 flex items-center justify-center rounded-full text-xs font-medium transition-colors ${
                         p === page ? "bg-emerald-600 text-white" : "text-gray-500 hover:bg-gray-100"
-                      }`}
-                    >{p}</button>
+                      }`}>{p}</button>
                   )
                 )}
 
-                <button
-                  disabled={page === totalPages}
-                  onClick={() => setPage((p) => p + 1)}
-                  className="w-5 h-5 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-xs"
-                >›</button>
+                <button disabled={page === totalPages} onClick={() => setPage(p => p + 1)}
+                  className="w-5 h-5 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-xs">›</button>
               </div>
 
               <div className="flex items-center gap-2 text-xs text-gray-400">
                 <span>Per page</span>
-                <select
-                  value={perPage}
+                <select value={perPage}
                   onChange={(e) => { setPerPage(Number(e.target.value) as typeof perPage); setPage(1); }}
-                  className="border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-600 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
-                >
-                  {PER_PAGE_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
+                  className="border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-600 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white">
+                  {PER_PAGE_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
                 </select>
               </div>
             </div>
