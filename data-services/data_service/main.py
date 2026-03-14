@@ -39,6 +39,7 @@ from confluent_kafka.admin import AdminClient, NewTopic
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 # mqtt_publisher lives in the iot package (mounted into the container)
@@ -150,9 +151,10 @@ class ConnectResponse(BaseModel):
     mqtt_topic:  str
     kafka_topic: str
     ws_url:      str
-    status:      str
+    status:      str       # "streaming" | "failed"
     protocol:    str
     data_format: str
+    steps:       dict      # {step_name: {"status": "success"|"failed"|"skipped", "message": str}}
 
 
 # ── FastAPI app ───────────────────────────────────────────────────────────────
@@ -214,56 +216,82 @@ def list_active():
     }
 
 
-@app.post("/sensors/connect", response_model=ConnectResponse, status_code=201)
+@app.post("/sensors/connect", status_code=201)
 async def connect_sensor(body: ConnectRequest):
-    key = f"{body.tenant_id}.{body.sensor_id}"
+    key         = f"{body.tenant_id}.{body.sensor_id}"
+    mqtt_topic  = f"verdantiq/{body.tenant_id}/{body.sensor_id}/data"
+    kafka_topic = f"verdantiq.{body.tenant_id}.{body.sensor_id}"
 
     if key in _active:
         raise HTTPException(status_code=409, detail=f"Sensor {key} already connected")
 
-    mqtt_topic  = f"verdantiq/{body.tenant_id}/{body.sensor_id}/data"
-    kafka_topic = f"verdantiq.{body.tenant_id}.{body.sensor_id}"
+    steps: dict = {}
 
-    # Step 1 — create Kafka topic
+    def _base_payload(overall_status: str) -> dict:
+        return {
+            "sensor_id":   body.sensor_id,
+            "tenant_id":   body.tenant_id,
+            "mqtt_topic":  mqtt_topic,
+            "kafka_topic": kafka_topic,
+            "ws_url":      f"ws://localhost:8090/ws/{body.tenant_id}/{body.sensor_id}",
+            "status":      overall_status,
+            "protocol":    "mqtt",
+            "data_format": "json",
+            "steps":       steps,
+        }
+
+    # ── Step 1: Create Kafka topic ─────────────────────────────────────────
     try:
         _create_kafka_topic(body.tenant_id, body.sensor_id)
+        steps["kafka_topic_created"] = {
+            "status":  "success",
+            "message": f"Kafka topic {kafka_topic} ready (2 partitions, RF=2)",
+        }
     except Exception as exc:
         log.error("Kafka topic creation failed: %s", exc)
-        raise HTTPException(status_code=502, detail=f"Kafka topic creation failed: {exc}")
+        steps["kafka_topic_created"] = {"status": "failed", "message": str(exc)}
+        steps["mqtt_topic_created"]  = {"status": "skipped", "message": "Kafka step failed"}
+        steps["simulator_started"]   = {"status": "skipped", "message": "Kafka step failed"}
+        return JSONResponse(status_code=502, content=_base_payload("failed"))
 
-    # Step 2 — register MQTT→Kafka routing in bridge
+    # ── Step 2: Register MQTT→Kafka route in bridge ────────────────────────
     try:
         await _register_bridge_route(mqtt_topic, kafka_topic)
+        steps["mqtt_topic_created"] = {
+            "status":  "success",
+            "message": f"MQTT topic {mqtt_topic} routed to Kafka",
+        }
     except Exception as exc:
         log.error("Bridge registration failed: %s", exc)
-        raise HTTPException(status_code=502, detail=f"Bridge registration failed: {exc}")
+        steps["mqtt_topic_created"] = {"status": "failed", "message": str(exc)}
+        steps["simulator_started"]  = {"status": "skipped", "message": "Bridge step failed"}
+        return JSONResponse(status_code=502, content=_base_payload("failed"))
 
-    # Step 3 — start MQTT simulator (background thread, non-blocking)
-    publisher = MQTTSensorPublisher(
-        tenant_id=body.tenant_id,
-        sensor_id=body.sensor_id,
-        sensor_type=body.sensor_type,
-        device_id=body.device_id,
-        location=body.location,
-        interval=2.0,
-        mqtt_host=MQTT_HOST,
-        mqtt_port=MQTT_PORT,
-    )
-    publisher.start()
-    _active[key] = publisher
+    # ── Step 3: Start MQTT simulator ───────────────────────────────────────
+    try:
+        publisher = MQTTSensorPublisher(
+            tenant_id=body.tenant_id,
+            sensor_id=body.sensor_id,
+            sensor_type=body.sensor_type,
+            device_id=body.device_id,
+            location=body.location,
+            interval=2.0,
+            mqtt_host=MQTT_HOST,
+            mqtt_port=MQTT_PORT,
+        )
+        publisher.start()
+        _active[key] = publisher
+        steps["simulator_started"] = {
+            "status":  "success",
+            "message": f"IoT simulator started (type={body.sensor_type})",
+        }
+    except Exception as exc:
+        log.error("Simulator start failed: %s", exc)
+        steps["simulator_started"] = {"status": "failed", "message": str(exc)}
+        return JSONResponse(status_code=500, content=_base_payload("failed"))
 
     log.info("Sensor connected: %s (type=%s)", key, body.sensor_type)
-
-    return ConnectResponse(
-        sensor_id=body.sensor_id,
-        tenant_id=body.tenant_id,
-        mqtt_topic=mqtt_topic,
-        kafka_topic=kafka_topic,
-        ws_url=f"ws://localhost:8090/ws/{body.tenant_id}/{body.sensor_id}",
-        status="streaming",
-        protocol="mqtt",
-        data_format="json",
-    )
+    return JSONResponse(status_code=201, content=_base_payload("streaming"))
 
 
 @app.delete("/sensors/{tenant_id}/{sensor_id}/disconnect")
