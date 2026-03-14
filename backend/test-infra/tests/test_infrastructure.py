@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 
 MQTT_HOST           = os.getenv("MQTT_HOST",           "localhost")
 MQTT_PORT           = int(os.getenv("MQTT_PORT",       "1883"))
-MQTT_WS_PORT        = int(os.getenv("MQTT_WS_PORT",   "9001"))
+MQTT_WS_PORT        = int(os.getenv("MQTT_WS_PORT",   "9003"))
 BRIDGE_URL          = os.getenv("BRIDGE_URL",          "http://localhost:8091")
 DATA_SERVICE_URL    = os.getenv("DATA_SERVICE_URL",    "http://localhost:8090")
 
