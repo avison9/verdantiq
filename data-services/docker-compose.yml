@@ -381,6 +381,134 @@ services:
           cpus: '1'
           memory: 3G
 
+  # ── MQTT Broker (Mosquitto) ─────────────────────────────────────────────────
+  mosquitto:
+    build:
+      context: ..
+      dockerfile: data-services/mqtt/Dockerfile.mosquitto
+    container_name: mosquitto
+    profiles: [dataservices, full]
+    ports:
+      - "1883:1883"   # MQTT
+      - "9001:9001"   # WebSocket
+    volumes:
+      - ./mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+    networks:
+      - verdantiq-net
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_pub -h localhost -t health/check -m ping -q 0 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── MQTT-Kafka Bridge ────────────────────────────────────────────────────────
+  mqtt-bridge:
+    build:
+      context: ..
+      dockerfile: data-services/mqtt/bridge/Dockerfile
+    container_name: mqtt-bridge
+    profiles: [dataservices, full]
+    ports:
+      - "8091:8091"
+    environment:
+      MQTT_HOST:     mosquitto
+      MQTT_PORT:     "1883"
+      KAFKA_BROKERS: "kafka1:9092,kafka2:9093,kafka3:9094,kafka4:9095"
+      BRIDGE_PORT:   "8091"
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+      kafka1:
+        condition: service_healthy
+      kafka2:
+        condition: service_healthy
+      kafka3:
+        condition: service_healthy
+      kafka4:
+        condition: service_healthy
+    networks:
+      - verdantiq-net
+    restart: on-failure
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8091/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ── Data Service ─────────────────────────────────────────────────────────────
+  data-service:
+    build:
+      context: ..
+      dockerfile: data-services/data_service/Dockerfile
+    container_name: data-service
+    profiles: [dataservices, full]
+    ports:
+      - "8090:8090"
+    environment:
+      KAFKA_BROKERS:  "kafka1:9092,kafka2:9093,kafka3:9094,kafka4:9095"
+      BRIDGE_URL:     "http://mqtt-bridge:8091"
+      MQTT_HOST:      mosquitto
+      MQTT_PORT:      "1883"
+    depends_on:
+      mqtt-bridge:
+        condition: service_healthy
+      kafka1:
+        condition: service_healthy
+    networks:
+      - verdantiq-net
+    restart: on-failure
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8090/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── Sensor Streaming Job (Spark) ─────────────────────────────────────────────
+  sensor-streaming:
+    build:
+      context: ..
+      dockerfile: data-services/spark/Dockerfile.spark
+    container_name: sensor-streaming
+    profiles: [dataservices, full]
+    command: >
+      /opt/spark/bin/spark-submit
+        --master spark://spark-master:7077
+        --deploy-mode client
+        --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,
+                   org.apache.kafka:kafka-clients:3.5.0
+        /opt/spark/jobs/sensor_streaming_job.py
+    environment:
+      KAFKA_BROKERS:       "kafka1:9092,kafka2:9093,kafka3:9094,kafka4:9095"
+      MINIO_ENDPOINT:      "http://minio:9000"
+      MINIO_ROOT_USER:     ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-myminiopassword}
+      ICEBERG_REST_URI:    "http://iceberg-rest:8181"
+      ICEBERG_WAREHOUSE:   "s3a://iceberg/"
+      CHECKPOINT_BASE:     "s3a://bronze/checkpoints/sensor-streaming"
+    volumes:
+      - ./spark/sensor_streaming_job.py:/opt/spark/jobs/sensor_streaming_job.py:ro
+    depends_on:
+      spark-master:
+        condition: service_healthy
+      kafka1:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      iceberg-rest:
+        condition: service_healthy
+    networks:
+      - verdantiq-net
+    restart: on-failure
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1500M
+
   # ── Prometheus ──────────────────────────────────────────────────────────────
   prometheus:
     image: prom/prometheus:latest
@@ -435,3 +563,4 @@ volumes:
   zk_log2:
   spark_data:
   trino_data:
+  mosquitto_data:
