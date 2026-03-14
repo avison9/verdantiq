@@ -20,7 +20,7 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
 function Card({ title, children, minHeight }: { title: string; children: React.ReactNode; minHeight?: number }) {
   return (
     <div
-      className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col overflow-hidden w-full"
+      className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col overflow-hidden w-full h-full"
       style={minHeight ? { minHeight } : undefined}
     >
       <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3 shrink-0">{title}</p>
@@ -158,7 +158,7 @@ const SensorDetail = () => {
           Sensor not found or you don't have access.
         </div>
       ) : (
-        <div className="space-y-4 max-w-5xl">
+        <div className="space-y-4 max-w-[1340px]">
           {/* Header */}
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-3">
@@ -178,8 +178,8 @@ const SensorDetail = () => {
           {/* ── Upper row: 3 content cards ── */}
           <div className="grid grid-cols-3 gap-4">
 
-            {/* Card 1 — Sensor Info (reference card — tallest due to full UUID) */}
-            <div ref={refCardRef}>
+            {/* Card 1 — Sensor Info */}
+            <div style={matchStyle}>
             <Card title="Sensor Info">
               <DetailRow label="Sensor ID"    value={<span className="font-mono text-gray-500 break-all">{sensor.sensor_id}</span>} />
               <DetailRow label="Name"         value={sensor.sensor_name} />
@@ -194,8 +194,9 @@ const SensorDetail = () => {
             </Card>
             </div>
 
-            {/* Card 2 — Connection */}
-            <Card title="Connection" minHeight={cardHeight}>
+            {/* Card 2 — Connection (reference — tallest due to full UUID + long message channel) */}
+            <div ref={refCardRef}>
+            <Card title="Connection">
               <DetailRow label="Device Token" value={<span className="font-mono text-gray-500 break-all">{sensor.mqtt_token}</span>} />
               <DetailRow label="Message Channel" value={<span className="font-mono text-gray-500 break-all" style={{fontSize:"10px"}}>{messageTopic}</span>} />
               <DetailRow label="Backup Channels" value={<span className="font-mono font-semibold text-gray-700">3</span>} />
@@ -209,6 +210,7 @@ const SensorDetail = () => {
                 }`}>{dataStatus}</span>
               } />
             </Card>
+            </div>
 
             {/* Card 3 — Hardware */}
             <Card title="Hardware" minHeight={cardHeight}>
