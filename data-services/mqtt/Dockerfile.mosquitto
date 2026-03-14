@@ -1,7 +1,10 @@
 FROM eclipse-mosquitto:2.0
 
-# Config is volume-mounted at runtime (see docker-compose)
-# This Dockerfile exists to allow future customisation (e.g. adding
-# password files, TLS certs, ACL rules for production).
+USER root
 
-EXPOSE 1883 9001
+# netcat for the healthcheck TCP probe
+RUN apk add --no-cache netcat-openbsd
+
+USER mosquitto
+
+EXPOSE 1883 9003
