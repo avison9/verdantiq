@@ -6,7 +6,9 @@ import { useGetMeQuery } from "../../redux/apislices/authApiSlice";
 import {
   useGetSensorsQuery,
   useUpdateSensorStatusMutation,
+  useUpdateSensorMutation,
   useInitiateConnectionMutation,
+  useLogConnectionEventMutation,
   type Sensor,
   type SensorStatus,
 } from "../../redux/apislices/userDashboardApiSlice";
@@ -143,7 +145,9 @@ const SensorConnections = () => {
     { skip: !me },
   );
   const [updateStatus]                        = useUpdateSensorStatusMutation();
+  const [updateSensor]                        = useUpdateSensorMutation();
   const [initiateConnection]                  = useInitiateConnectionMutation();
+  const [logConnectionEvent]                  = useLogConnectionEventMutation();
 
   const [updatingId,  setUpdatingId]          = useState<string | null>(null);
   // pipeline state keyed by sensor_id
@@ -235,31 +239,77 @@ const SensorConnections = () => {
         body:    JSON.stringify(payload),
       });
 
-      // Cancel any pending spinner advances — result is known
+      // Parse body regardless of HTTP status — it always contains per-step results
+      let result: Record<string, unknown> = {};
+      try { result = await resp.json(); } catch { /* ignore parse error */ }
+
+      // Cancel pending spinner timers — outcome is now known
       timers.forEach(clearTimeout);
 
+      // Log each step as it actually happened (success / failed / skipped)
+      const stepEventMap: Record<string, string> = {
+        kafka_topic_created: "kafka_topic_created",
+        mqtt_topic_created:  "mqtt_topic_created",
+        simulator_started:   "simulator_started",
+      };
+      const steps = (result.steps ?? {}) as Record<string, { status: string; message: string }>;
+      Object.entries(stepEventMap).forEach(([stepKey, eventType]) => {
+        const step = steps[stepKey];
+        if (!step) return;
+        logConnectionEvent({
+          sensor_id:  sid,
+          event_type: eventType,
+          status:     step.status === "success" ? "success" : step.status === "skipped" ? "pending" : "failed",
+          message:    step.message,
+        });
+      });
+
       if (!resp.ok) {
-        const errText = await resp.text();
-        throw new Error(`${resp.status}: ${errText}`);
+        const errText = result.detail ? String(result.detail) : `HTTP ${resp.status}`;
+        markError(sid, errText);
+        toast.error(`Pipeline setup failed: ${errText}`);
+        return;
       }
 
-      const result = await resp.json();
-
-      // HTTP 201 confirmed — now mark every step done
+      // Full success — mark pipeline ready
       setStep(sid, 5, "in_progress");
       setTimeout(() => {
         markAllDone(sid, {
-          mqttTopic:  result.mqtt_topic,
-          kafkaTopic: result.kafka_topic,
+          mqttTopic:  String(result.mqtt_topic  ?? ""),
+          kafkaTopic: String(result.kafka_topic ?? ""),
         });
         toast.success("Sensor pipeline is live!");
       }, 350);
+
+      logConnectionEvent({
+        sensor_id:  sid,
+        event_type: "pipeline_ready",
+        status:     "success",
+        message:    "Full IoT pipeline is ready and streaming",
+      });
+
+      // Update backend: status → active, persist protocol + data_format
+      updateStatus({ sensor_id: sid, status: "active" });
+      updateSensor({
+        sensor_id:       sid,
+        sensor_metadata: {
+          protocol:    String(result.protocol    ?? "mqtt"),
+          data_format: String(result.data_format ?? "json"),
+        },
+      });
 
     } catch (err) {
       timers.forEach(clearTimeout);
       const msg = err instanceof Error ? err.message : String(err);
       markError(sid, msg);
       toast.error(`Pipeline setup failed: ${msg}`);
+      // Log the connection failure itself
+      logConnectionEvent({
+        sensor_id:  sid,
+        event_type: "connection_initiated",
+        status:     "failed",
+        message:    msg,
+      });
     }
   };
 

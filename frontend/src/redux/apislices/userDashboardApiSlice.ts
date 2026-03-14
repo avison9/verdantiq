@@ -205,6 +205,20 @@ export const userDashboardApiSlice = baseApiSlice.injectEndpoints({
       }),
       invalidatesTags: ["Sensor"],
     }),
+    logConnectionEvent: builder.mutation<SensorConnectionEvent, {
+      sensor_id: string;
+      event_type: string;
+      status?: string;
+      message?: string;
+      details?: Record<string, unknown>;
+    }>({
+      query: ({ sensor_id, ...body }) => ({
+        url: `${APIendPoints.sensors}/${sensor_id}/connection-events`,
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["Sensor"],
+    }),
     getSensorConnectionEvents: builder.query<SensorConnectionEventPage, { sensor_id: string; page?: number; per_page?: number }>({
       query: ({ sensor_id, page = 1, per_page = 20 }) =>
         `${APIendPoints.sensors}/${sensor_id}/connection-events?page=${page}&per_page=${per_page}`,
@@ -241,6 +255,7 @@ export const {
   useUpdateSensorStatusMutation,
   useDeleteSensorMutation,
   useInitiateConnectionMutation,
+  useLogConnectionEventMutation,
   useGetSensorConnectionEventsQuery,
   useTopUpBillingMutation,
   useGetTransactionsQuery,

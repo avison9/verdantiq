@@ -1,11 +1,41 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import usePageTitle from "../../hooks/usePageTitle";
-import { useGetSensorQuery } from "../../redux/apislices/userDashboardApiSlice";
+import {
+  useGetSensorQuery,
+  useUpdateSensorMutation,
+} from "../../redux/apislices/userDashboardApiSlice";
 import { STATUS_STYLES, sensorIcon } from "./sensorUtils";
 
 // Data service URL — override with VITE_DATA_SERVICE_URL in .env
 const DATA_SERVICE_URL = import.meta.env.VITE_DATA_SERVICE_URL ?? "http://localhost:8090";
+
+async function fetchReplicationFactor(topic: string): Promise<number | null> {
+  try {
+    const r = await fetch(
+      `${DATA_SERVICE_URL}/kafka/topic-info?topic=${encodeURIComponent(topic)}`,
+      { signal: AbortSignal.timeout(4000) },
+    );
+    if (!r.ok) return null;
+    const body = await r.json() as { replication_factor: number };
+    return body.replication_factor;
+  } catch {
+    return null;
+  }
+}
+
+async function checkPipelineActive(tenantId: string | number, sensorId: string): Promise<boolean> {
+  try {
+    const r = await fetch(`${DATA_SERVICE_URL}/sensors/active`, {
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!r.ok) return false;
+    const body = await r.json() as { sensors: Array<{ key: string }> };
+    return body.sensors.some(s => s.key === `${tenantId}.${sensorId}`);
+  } catch {
+    return false;
+  }
+}
 
 // ── Shared row ────────────────────────────────────────────────────────────────
 
@@ -50,6 +80,15 @@ interface TerminalLine {
 }
 
 const MAX_LINES = 20;
+
+interface HardwareInfo {
+  firmware_version?:      string;
+  mac_address?:           string;
+  ip_address?:            string;
+  battery_level_percent?: number;
+  memory_free_mb?:        number;
+  memory_total_mb?:       number;
+}
 
 // ── Terminal component ────────────────────────────────────────────────────────
 
@@ -134,7 +173,7 @@ function Terminal({
           <>
             <p className="text-gray-500">VerdantIQ Sensor Terminal v2.0</p>
             <p className="text-gray-700">──────────────────────────────────</p>
-            <p className="text-gray-500">Press <span className="text-emerald-400">Connect</span> to start the IoT pipeline.</p>
+            <p className="text-gray-500">Press <span className="text-emerald-400">Connect</span> to stream live data.</p>
             <p className="text-gray-700">──────────────────────────────────</p>
             <p className="text-emerald-400 animate-pulse">█</p>
           </>
@@ -196,10 +235,16 @@ const SensorDetail = () => {
     return () => ro.disconnect();
   }, [sensor]);
 
+  const [updateSensor] = useUpdateSensorMutation();
+
   // ── terminal / pipeline state ───────────────────────────────────────────
-  const [connectState, setConnectState] = useState<ConnectState>("idle");
-  const [lines, setLines]               = useState<TerminalLine[]>([]);
-  const wsRef                           = useRef<WebSocket | null>(null);
+  const [connectState,      setConnectState]      = useState<ConnectState>("idle");
+  const [lines,             setLines]             = useState<TerminalLine[]>([]);
+  const [replicationFactor, setReplicationFactor] = useState<number | null>(null);
+  const [pipelineActive,    setPipelineActive]    = useState(false);
+  const [hwInfo,            setHwInfo]            = useState<HardwareInfo>({});
+  const wsRef        = useRef<WebSocket | null>(null);
+  const hwPatchedRef = useRef(false);
 
   const pushLine = useCallback((text: string, type: TerminalLine["type"] = "info", ts?: string) => {
     setLines((prev) => {
@@ -208,11 +253,85 @@ const SensorDetail = () => {
     });
   }, []);
 
+  // ── open WebSocket only (pipeline already running) ──────────────────────
+  const openWebSocket = useCallback((quiet = false) => {
+    if (!sensor) return;
+    if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
+
+    setConnectState("connecting");
+    const wsUrl = `${DATA_SERVICE_URL.replace(/^http/, "ws")}/ws/${sensor.tenant_id}/${sensor.sensor_id}`;
+    const ws    = new WebSocket(wsUrl);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      setConnectState("streaming");
+      if (!quiet) pushLine("Stream connected ✓", "system");
+    };
+
+    ws.onmessage = (evt) => {
+      try {
+        const envelope  = JSON.parse(evt.data as string);
+        const pl        = envelope.payload ?? {};
+        const ts        = new Date(envelope.ts).toISOString().slice(11, 19);
+        const metricsKey = Object.keys(pl).find(k =>
+          ["soil_metrics", "air_quality", "weather_data",
+           "temperature_data", "pollution_metrics"].includes(k),
+        );
+        const metrics = metricsKey ? pl[metricsKey] : pl;
+        pushLine(`offset:${envelope.offset} ${JSON.stringify(metrics)}`, "data", ts);
+
+        // Extract hardware_info and populate Hardware card
+        if (pl.hardware_info) {
+          const hw = pl.hardware_info as HardwareInfo;
+          setHwInfo(hw);
+          // Patch backend once so values persist across page refreshes
+          if (!hwPatchedRef.current && sensor) {
+            hwPatchedRef.current = true;
+            updateSensor({
+              sensor_id: sensor.sensor_id,
+              sensor_metadata: {
+                firmware_version:      hw.firmware_version,
+                mac_address:           hw.mac_address,
+                ip_address:            hw.ip_address,
+                battery_level:         hw.battery_level_percent != null
+                                         ? String(hw.battery_level_percent)
+                                         : undefined,
+                memory:                hw.memory_total_mb != null
+                                         ? `${hw.memory_free_mb ?? "?"}/${hw.memory_total_mb} MB`
+                                         : undefined,
+              },
+            });
+          }
+        }
+      } catch {
+        pushLine(evt.data as string, "data");
+      }
+    };
+
+    ws.onerror = () => {
+      setConnectState("error");
+      pushLine("WebSocket error — check data service", "error");
+    };
+
+    ws.onclose = (ev) => {
+      setConnectState("idle");
+      pushLine(`Stream closed (code ${ev.code})`, "system");
+    };
+  }, [sensor, pushLine]);
+
   const handleConnect = useCallback(async () => {
     if (!sensor) return;
-    setConnectState("connecting");
     setLines([]);
 
+    // If pipeline is already active in data service, skip POST and just open WebSocket
+    const alreadyActive = await checkPipelineActive(sensor.tenant_id, sensor.sensor_id);
+    if (alreadyActive) {
+      pushLine("Pipeline already active — connecting to stream…", "system");
+      openWebSocket();
+      return;
+    }
+
+    setConnectState("connecting");
     pushLine("Initiating IoT pipeline…", "system");
 
     const payload = {
@@ -233,61 +352,40 @@ const SensorDetail = () => {
         body:    JSON.stringify(payload),
       });
 
+      // Body always contains per-step results regardless of HTTP status
+      let result: Record<string, unknown> = {};
+      try { result = await resp.json(); } catch { /* ignore */ }
+
+      // Print each step result to terminal
+      const steps = (result.steps ?? {}) as Record<string, { status: string; message: string }>;
+      const stepLabels: Record<string, string> = {
+        kafka_topic_created: "Kafka topic",
+        mqtt_topic_created:  "MQTT topic ",
+        simulator_started:   "Simulator  ",
+      };
+      Object.entries(stepLabels).forEach(([key, label]) => {
+        const s = steps[key];
+        if (!s) return;
+        const icon = s.status === "success" ? "✓" : s.status === "skipped" ? "—" : "✗";
+        pushLine(`${icon} ${label}: ${s.message}`,
+          s.status === "success" ? "system" : s.status === "skipped" ? "info" : "error");
+      });
+
       if (!resp.ok) {
-        const err = await resp.text();
-        throw new Error(`${resp.status}: ${err}`);
+        const detail = result.detail ? String(result.detail) : `HTTP ${resp.status}`;
+        setConnectState("error");
+        pushLine(`Pipeline failed: ${detail}`, "error");
+        return;
       }
 
-      const data = await resp.json();
-      pushLine(`MQTT topic  : ${data.mqtt_topic}`,  "system");
-      pushLine(`Kafka topic : ${data.kafka_topic}`, "system");
-      pushLine("Pipeline ready — opening stream…",  "system");
-
-      // Open WebSocket to stream live Kafka messages
-      const wsUrl = `${DATA_SERVICE_URL.replace(/^http/, "ws")}/ws/${sensor.tenant_id}/${sensor.sensor_id}`;
-      const ws    = new WebSocket(wsUrl);
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        setConnectState("streaming");
-        pushLine("Stream connected ✓", "system");
-      };
-
-      ws.onmessage = (evt) => {
-        try {
-          const envelope = JSON.parse(evt.data as string);
-          const pl       = envelope.payload ?? {};
-          const ts       = new Date(envelope.ts).toISOString().slice(11, 19);
-          // Pretty-print the sensor-specific metrics block
-          const metricsKey = Object.keys(pl).find((k) =>
-            ["soil_metrics", "air_quality", "weather_data",
-             "temperature_data", "pollution_metrics"].includes(k)
-          );
-          const metrics = metricsKey ? pl[metricsKey] : pl;
-          const text    = JSON.stringify(metrics);
-          pushLine(`offset:${envelope.offset} ${text}`, "data", ts);
-        } catch {
-          pushLine(evt.data as string, "data");
-        }
-      };
-
-      ws.onerror = () => {
-        setConnectState("error");
-        pushLine("WebSocket error — check data service", "error");
-      };
-
-      ws.onclose = (ev) => {
-        if (connectState !== "idle") {
-          setConnectState("idle");
-          pushLine(`Stream closed (code ${ev.code})`, "system");
-        }
-      };
+      pushLine("Pipeline ready — opening stream…", "system");
+      openWebSocket();
 
     } catch (err) {
       setConnectState("error");
       pushLine(`Error: ${err instanceof Error ? err.message : String(err)}`, "error");
     }
-  }, [sensor, pushLine, connectState]);
+  }, [sensor, pushLine, openWebSocket]);
 
   const handleDisconnect = useCallback(async () => {
     wsRef.current?.close();
@@ -316,6 +414,26 @@ const SensorDetail = () => {
     };
   }, []);
 
+  // Poll data service every 5 s to keep Pipeline badge accurate
+  useEffect(() => {
+    if (!sensor) return;
+    const check = () =>
+      checkPipelineActive(sensor.tenant_id, sensor.sensor_id)
+        .then(setPipelineActive);
+    check();
+    const id = setInterval(check, 5000);
+    return () => clearInterval(id);
+  }, [sensor]);
+
+  // Fetch Kafka replication factor for "Backup Channels" (once per sensor)
+  useEffect(() => {
+    if (!sensor) return;
+    const topic = `verdantiq.${sensor.tenant_id}.${sensor.sensor_id}`;
+    fetchReplicationFactor(topic).then(rf => {
+      if (rf !== null) setReplicationFactor(rf);
+    });
+  }, [sensor]);
+
   const meta = sensor?.sensor_metadata ?? {};
   const get  = (key: string) => (meta[key] != null ? String(meta[key]) : null);
 
@@ -326,12 +444,21 @@ const SensorDetail = () => {
   const serialNo     = get("serial_number");
   const os           = get("operating_system");
   const powerType    = get("power_type");
-  const firmware     = get("firmware_version");
-  const macAddr      = get("mac_address");
-  const ipAddr       = get("ip_address");
-  const battery      = get("battery_level");
-  const memory       = get("memory");
-  const network      = get("network");
+  // Hardware — prefer live values from WS stream, fall back to saved sensor_metadata
+  const firmware = hwInfo.firmware_version      ?? get("firmware_version");
+  const macAddr  = hwInfo.mac_address           ?? get("mac_address");
+  const ipAddr   = hwInfo.ip_address            ?? get("ip_address");
+  const battery  = hwInfo.battery_level_percent != null
+                     ? String(hwInfo.battery_level_percent)
+                     : get("battery_level");
+  const memory   = hwInfo.memory_total_mb != null
+                     ? `${hwInfo.memory_free_mb ?? "?"}/${hwInfo.memory_total_mb} MB`
+                     : get("memory");
+  const network  = get("network");
+
+  // Connection metadata — stored in sensor_metadata after first connect
+  const protocol   = get("protocol");
+  const dataFormat = get("data_format");
 
   const lastSeen = sensor?.last_message_at
     ? new Date(sensor.last_message_at).toLocaleString()
@@ -343,6 +470,20 @@ const SensorDetail = () => {
 
   const dataStatus = sensor?.status === "active" ? "Online" : "Offline";
   const gps        = latitude && longitude ? `${latitude}, ${longitude}` : null;
+
+  // Pipeline badge — reflects data service state independently of WebSocket
+  const pipelineLabel =
+    connectState === "streaming"  ? "Streaming"   :
+    connectState === "connecting" ? "Connecting…" :
+    connectState === "error"      ? "Error"       :
+    pipelineActive                ? "Connected"   : "Offline";
+
+  const pipelineBadgeCls =
+    connectState === "streaming"  ? "bg-emerald-100 text-emerald-700" :
+    connectState === "connecting" ? "bg-yellow-100  text-yellow-700"  :
+    connectState === "error"      ? "bg-red-100     text-red-700"     :
+    pipelineActive                ? "bg-blue-100    text-blue-700"    :
+    "bg-gray-100 text-gray-500";
 
   const matchStyle = cardHeight ? { minHeight: cardHeight } : undefined;
 
@@ -407,9 +548,13 @@ const SensorDetail = () => {
             <Card title="Connection">
               <DetailRow label="Device Token" value={<span className="font-mono text-gray-500 break-all">{sensor.mqtt_token}</span>} />
               <DetailRow label="Message Channel" value={<span className="font-mono text-gray-500 break-all" style={{fontSize:"10px"}}>{messageTopic}</span>} />
-              <DetailRow label="Backup Channels" value={<span className="font-mono font-semibold text-gray-700">3</span>} />
-              <DetailRow label="Protocol"     value="MQTT / Kafka" />
-              <DetailRow label="Data Format"  value="Avro (Schema Registry)" />
+              <DetailRow label="Backup Channels" value={
+                <span className="font-mono font-semibold text-gray-700">
+                  {replicationFactor !== null ? replicationFactor : "—"}
+                </span>
+              } />
+              <DetailRow label="Protocol"    value={protocol   ? protocol.toUpperCase()   : <Nil />} />
+              <DetailRow label="Data Format" value={dataFormat ? dataFormat.toUpperCase() : <Nil />} />
               <DetailRow label="Network"      value={network ?? <Nil />} />
               <DetailRow label="Total Messages" value={sensor.message_count.toLocaleString()} />
               <DetailRow label="Status"       value={
@@ -417,18 +562,11 @@ const SensorDetail = () => {
                   sensor.status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500"
                 }`}>{dataStatus}</span>
               } />
-              {/* ── Connect to Data Service ── */}
+              {/* ── Pipeline status ── */}
               <div className="pt-3 border-t border-gray-50 mt-1">
                 <DetailRow label="Pipeline" value={
-                  <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${
-                    connectState === "streaming"  ? "bg-emerald-100 text-emerald-700" :
-                    connectState === "connecting" ? "bg-yellow-100 text-yellow-700" :
-                    connectState === "error"      ? "bg-red-100 text-red-700" :
-                    "bg-gray-100 text-gray-500"
-                  }`}>
-                    {connectState === "streaming"  ? "Streaming" :
-                     connectState === "connecting" ? "Connecting…" :
-                     connectState === "error"      ? "Error" : "Offline"}
+                  <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${pipelineBadgeCls}`}>
+                    {pipelineLabel}
                   </span>
                 } />
               </div>
@@ -441,11 +579,9 @@ const SensorDetail = () => {
               <DetailRow label="OS"          value={os ?? <Nil />} />
               <DetailRow label="MAC Address" value={macAddr ? <span className="font-mono text-gray-500">{macAddr}</span> : <Nil />} />
               <DetailRow label="IP Address"  value={ipAddr  ? <span className="font-mono text-gray-500">{ipAddr}</span>  : <Nil />} />
-              <DetailRow label="Power"       value={powerType ? powerType.toUpperCase() : <Nil />} />
-              {powerType === "dc" && (
-                <DetailRow label="Battery"   value={battery ? `${battery}%` : <Nil />} />
-              )}
-              <DetailRow label="Memory"      value={memory ?? <Nil />} />
+              <DetailRow label="Power"   value={powerType ? powerType.toUpperCase() : <Nil />} />
+              <DetailRow label="Battery" value={battery ? `${battery}%` : <Nil />} />
+              <DetailRow label="Memory"  value={memory ?? <Nil />} />
               <DetailRow label="GPS"         value={gps ?? <Nil />} />
             </Card>
           </div>
