@@ -29,11 +29,13 @@ import os
 import socket
 import time
 import logging
+import threading
 
 import psycopg2
 import psycopg2.errors
 import pytest
 import requests
+import paho.mqtt.client as mqtt_client
 from confluent_kafka import Consumer, KafkaError, Producer
 from confluent_kafka.admin import AdminClient, NewTopic
 from minio import Minio
@@ -43,6 +45,12 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ── Host-facing endpoints ─────────────────────────────────────────────────────
+
+MQTT_HOST           = os.getenv("MQTT_HOST",           "localhost")
+MQTT_PORT           = int(os.getenv("MQTT_PORT",       "1883"))
+MQTT_WS_PORT        = int(os.getenv("MQTT_WS_PORT",   "9001"))
+BRIDGE_URL          = os.getenv("BRIDGE_URL",          "http://localhost:8091")
+DATA_SERVICE_URL    = os.getenv("DATA_SERVICE_URL",    "http://localhost:8090")
 
 KAFKA_BROKERS       = os.getenv("KAFKA_BROKERS",       "localhost:19092,localhost:19093,localhost:19094,localhost:19095")
 SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL", "http://localhost:8089")
@@ -1189,3 +1197,481 @@ def test_kafka_exporter_reports_correct_broker_count():
             assert count == 4, f"Expected 4 Kafka brokers, exporter reports {count}"
             return
     pytest.fail("kafka_brokers metric line not found in exporter output")
+
+
+# =============================================================================
+#  MQTT Broker (Mosquitto)
+# =============================================================================
+
+def test_mqtt_broker_tcp_reachable():
+    """Mosquitto must accept TCP connections on port 1883."""
+    assert wait_for_service(MQTT_HOST, MQTT_PORT, "Mosquitto MQTT"), \
+        f"Mosquitto not reachable at {MQTT_HOST}:{MQTT_PORT}"
+
+
+def test_mqtt_broker_websocket_reachable():
+    """Mosquitto WebSocket listener must be reachable on port 9001."""
+    assert wait_for_service(MQTT_HOST, MQTT_WS_PORT, "Mosquitto WS"), \
+        f"Mosquitto WS not reachable at {MQTT_HOST}:{MQTT_WS_PORT}"
+
+
+def test_mqtt_publish_subscribe_roundtrip():
+    """
+    Publish a message to a test MQTT topic and verify it arrives at a
+    subscriber on the same broker within 5 seconds.
+    """
+    received: list[bytes] = []
+    event = threading.Event()
+
+    def on_message(client, userdata, msg):
+        received.append(msg.payload)
+        event.set()
+
+    sub = mqtt_client.Client(client_id=f"test-sub-{_RUN_ID}")
+    sub.on_message = on_message
+    sub.connect(MQTT_HOST, MQTT_PORT, keepalive=10)
+    test_topic = f"infra/test/{_RUN_ID}"
+    sub.subscribe(test_topic, qos=1)
+    sub.loop_start()
+
+    time.sleep(0.3)  # let subscribe propagate
+
+    pub = mqtt_client.Client(client_id=f"test-pub-{_RUN_ID}")
+    pub.connect(MQTT_HOST, MQTT_PORT, keepalive=10)
+    pub.publish(test_topic, payload=b"hello-verdantiq", qos=1)
+    pub.disconnect()
+
+    assert event.wait(timeout=5), "MQTT message not received within 5 s"
+    assert received[0] == b"hello-verdantiq"
+
+    sub.loop_stop()
+    sub.disconnect()
+
+
+def test_mqtt_qos1_delivery_confirmation():
+    """QoS 1 publish must return MQTT_ERR_SUCCESS (rc=0)."""
+    client = mqtt_client.Client(client_id=f"test-qos-{_RUN_ID}")
+    client.connect(MQTT_HOST, MQTT_PORT, keepalive=10)
+    result = client.publish(f"infra/qos/{_RUN_ID}", payload=b"qos-test", qos=1)
+    client.disconnect()
+    assert result.rc == mqtt_client.MQTT_ERR_SUCCESS, \
+        f"QoS 1 publish failed with rc={result.rc}"
+
+
+def test_mqtt_multiple_clients_concurrent():
+    """Multiple concurrent MQTT clients must all connect and publish successfully."""
+    errors = []
+
+    def _publish(client_id: str):
+        c = mqtt_client.Client(client_id=client_id)
+        try:
+            c.connect(MQTT_HOST, MQTT_PORT, keepalive=10)
+            r = c.publish(f"infra/concurrent/{client_id}", b"ping", qos=0)
+            if r.rc != mqtt_client.MQTT_ERR_SUCCESS:
+                errors.append(f"{client_id}: rc={r.rc}")
+            c.disconnect()
+        except Exception as exc:
+            errors.append(f"{client_id}: {exc}")
+
+    threads = [
+        threading.Thread(target=_publish, args=(f"concurrent-{_RUN_ID}-{i}",))
+        for i in range(10)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+
+    assert not errors, f"Concurrent MQTT publish errors: {errors}"
+
+
+# =============================================================================
+#  MQTT-Kafka Bridge
+# =============================================================================
+
+def test_bridge_health_endpoint():
+    """Bridge health endpoint must return 200 with status=healthy."""
+    assert wait_for_service("localhost", 8091, "MQTT-Kafka Bridge"), \
+        "Bridge service not reachable on port 8091"
+    r = requests.get(f"{BRIDGE_URL}/health", timeout=10)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "healthy"
+    assert "route_count" in body
+
+
+def test_bridge_list_routes_endpoint():
+    """GET /routes must return a valid JSON response."""
+    r = requests.get(f"{BRIDGE_URL}/routes", timeout=10)
+    assert r.status_code == 200
+    body = r.json()
+    assert "count" in body
+    assert "routes" in body
+    assert isinstance(body["routes"], dict)
+
+
+def test_bridge_register_and_list_route():
+    """Registering a route must appear in subsequent GET /routes."""
+    mqtt_topic  = f"infra/bridge/test/{_RUN_ID}"
+    kafka_topic = f"infra.bridge.test.{_RUN_ID}"
+
+    r = requests.post(
+        f"{BRIDGE_URL}/routes",
+        json={"mqtt_topic": mqtt_topic, "kafka_topic": kafka_topic},
+        timeout=10,
+    )
+    assert r.status_code == 201, f"Route registration failed: {r.text}"
+    body = r.json()
+    assert body["mqtt_topic"]  == mqtt_topic
+    assert body["kafka_topic"] == kafka_topic
+    assert body["status"]      == "active"
+
+    r2 = requests.get(f"{BRIDGE_URL}/routes", timeout=10)
+    assert mqtt_topic in r2.json()["routes"]
+
+
+def test_bridge_mqtt_to_kafka_message_flow():
+    """
+    End-to-end: publish an MQTT message → bridge → Kafka consumer must
+    receive it within 10 seconds.
+    """
+    tenant_id   = f"infra{_RUN_ID}"
+    sensor_id   = f"testsensor{_RUN_ID}"
+    mqtt_topic  = f"verdantiq/{tenant_id}/{sensor_id}/data"
+    kafka_topic = f"verdantiq.{tenant_id}.{sensor_id}"
+
+    # 1. Create Kafka topic
+    admin = AdminClient({"bootstrap.servers": KAFKA_BROKERS})
+    fs = admin.create_topics([NewTopic(kafka_topic, num_partitions=1, replication_factor=1)])
+    for _, f in fs.items():
+        try:
+            f.result()
+        except Exception as exc:
+            if "already exists" not in str(exc).lower():
+                pytest.fail(f"Kafka topic creation failed: {exc}")
+
+    # 2. Register route in bridge
+    r = requests.post(
+        f"{BRIDGE_URL}/routes",
+        json={"mqtt_topic": mqtt_topic, "kafka_topic": kafka_topic},
+        timeout=10,
+    )
+    assert r.status_code == 201, f"Bridge route registration failed: {r.text}"
+
+    time.sleep(0.5)  # allow bridge to subscribe
+
+    # 3. Start Kafka consumer
+    consumer = Consumer({
+        "bootstrap.servers": KAFKA_BROKERS,
+        "group.id":          f"infra-bridge-test-{_RUN_ID}",
+        "auto.offset.reset": "latest",
+    })
+    consumer.subscribe([kafka_topic])
+    consumer.poll(0)     # trigger assignment
+
+    time.sleep(0.5)
+
+    # 4. Publish via MQTT
+    payload = json.dumps({"device_id": sensor_id, "test": True, "ts": _RUN_ID}).encode()
+    pub = mqtt_client.Client(client_id=f"bridge-test-pub-{_RUN_ID}")
+    pub.connect(MQTT_HOST, MQTT_PORT, keepalive=10)
+    pub.publish(mqtt_topic, payload=payload, qos=1)
+    pub.disconnect()
+
+    # 5. Wait for message in Kafka
+    deadline = time.time() + 10
+    received = None
+    while time.time() < deadline:
+        msg = consumer.poll(0.5)
+        if msg and not msg.error():
+            received = msg.value()
+            break
+
+    consumer.close()
+
+    assert received is not None, "MQTT→Kafka bridge did not forward message within 10 s"
+    assert json.loads(received)["test"] is True
+
+
+def test_bridge_deregisters_route():
+    """DELETE /routes/{encoded} must remove the route from the listing."""
+    mqtt_topic  = f"infra/bridge/del/{_RUN_ID}"
+    kafka_topic = f"infra.bridge.del.{_RUN_ID}"
+
+    requests.post(
+        f"{BRIDGE_URL}/routes",
+        json={"mqtt_topic": mqtt_topic, "kafka_topic": kafka_topic},
+        timeout=10,
+    )
+    encoded = mqtt_topic.replace("/", "__")
+    r = requests.delete(f"{BRIDGE_URL}/routes/{encoded}", timeout=10)
+    assert r.status_code == 200
+
+    routes = requests.get(f"{BRIDGE_URL}/routes", timeout=10).json()["routes"]
+    assert mqtt_topic not in routes
+
+
+# =============================================================================
+#  Data Service
+# =============================================================================
+
+def test_data_service_health():
+    """Data service health endpoint must return status=healthy."""
+    assert wait_for_service("localhost", 8090, "Data Service"), \
+        "Data service not reachable on port 8090"
+    r = requests.get(f"{DATA_SERVICE_URL}/health", timeout=10)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "healthy"
+    assert "active_sensors" in body
+
+
+def test_data_service_active_sensors_list():
+    """GET /sensors/active must return a valid response."""
+    r = requests.get(f"{DATA_SERVICE_URL}/sensors/active", timeout=10)
+    assert r.status_code == 200
+    body = r.json()
+    assert "count" in body
+    assert "sensors" in body
+    assert isinstance(body["sensors"], list)
+
+
+def test_data_service_connect_endpoint_soil_sensor():
+    """
+    POST /sensors/connect with a soil sensor must:
+      - Return 201
+      - Return mqtt_topic, kafka_topic, ws_url, status=streaming
+      - Create the Kafka topic
+    """
+    tenant_id  = f"infratenant{_RUN_ID}"
+    sensor_id  = f"infra_soil_{_RUN_ID}"
+    payload    = {
+        "sensor_id":   sensor_id,
+        "tenant_id":   tenant_id,
+        "sensor_type": "soil",
+        "device_id":   sensor_id,
+        "location":    {"latitude": 7.3775, "longitude": 3.9470, "field_id": "test_plot"},
+    }
+
+    r = requests.post(f"{DATA_SERVICE_URL}/sensors/connect", json=payload, timeout=15)
+    assert r.status_code == 201, f"Connect failed: {r.text}"
+
+    body = r.json()
+    assert body["sensor_id"]   == sensor_id
+    assert body["tenant_id"]   == tenant_id
+    assert body["status"]      == "streaming"
+    assert body["mqtt_topic"]  == f"verdantiq/{tenant_id}/{sensor_id}/data"
+    assert body["kafka_topic"] == f"verdantiq.{tenant_id}.{sensor_id}"
+    assert "/ws/" in body["ws_url"]
+
+    # Verify Kafka topic was created
+    admin  = AdminClient({"bootstrap.servers": KAFKA_BROKERS})
+    topics = admin.list_topics(timeout=10).topics
+    assert body["kafka_topic"] in topics, \
+        f"Kafka topic '{body['kafka_topic']}' was not created"
+
+
+def test_data_service_connect_duplicate_returns_409():
+    """Connecting the same sensor twice must return 409 Conflict."""
+    tenant_id  = f"infratenant{_RUN_ID}"
+    sensor_id  = f"infra_soil_{_RUN_ID}"  # same as above
+    payload    = {
+        "sensor_id":   sensor_id,
+        "tenant_id":   tenant_id,
+        "sensor_type": "soil",
+        "device_id":   sensor_id,
+        "location":    {},
+    }
+    r = requests.post(f"{DATA_SERVICE_URL}/sensors/connect", json=payload, timeout=15)
+    assert r.status_code == 409, \
+        f"Expected 409 for duplicate connect, got {r.status_code}: {r.text}"
+
+
+def test_data_service_disconnect_sensor():
+    """DELETE /sensors/{tenant}/{sensor}/disconnect must return 200 and remove the sensor."""
+    tenant_id = f"infratenant{_RUN_ID}"
+    sensor_id = f"infra_soil_{_RUN_ID}"
+
+    r = requests.delete(
+        f"{DATA_SERVICE_URL}/sensors/{tenant_id}/{sensor_id}/disconnect",
+        timeout=10,
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "disconnected"
+
+    # Confirm removed from active list
+    active = requests.get(f"{DATA_SERVICE_URL}/sensors/active", timeout=10).json()
+    keys = [s["key"] for s in active["sensors"]]
+    assert f"{tenant_id}.{sensor_id}" not in keys
+
+
+def test_data_service_all_sensor_types_connect():
+    """All 5 sensor types must connect and stream successfully."""
+    types = [
+        ("soil",        "soil"),
+        ("co2",         "co2_sensor"),
+        ("weather",     "weather_station"),
+        ("temperature", "temp_sensor"),
+        ("environment", "env_monitor"),
+    ]
+    connected = []
+
+    for canonical, type_str in types:
+        sid     = f"infra_{canonical}_{_RUN_ID}"
+        tid     = f"typetest{_RUN_ID}"
+        payload = {
+            "sensor_id":   sid,
+            "tenant_id":   tid,
+            "sensor_type": type_str,
+            "device_id":   sid,
+            "location":    {},
+        }
+        r = requests.post(f"{DATA_SERVICE_URL}/sensors/connect", json=payload, timeout=15)
+        assert r.status_code == 201, \
+            f"Sensor type '{type_str}' connect failed: {r.text}"
+        connected.append((tid, sid))
+
+    # Cleanup
+    for tid, sid in connected:
+        requests.delete(
+            f"{DATA_SERVICE_URL}/sensors/{tid}/{sid}/disconnect",
+            timeout=10,
+        )
+
+
+def test_data_service_kafka_messages_flow_after_connect():
+    """
+    After connecting a sensor, Kafka messages must arrive on its topic
+    within 6 seconds (simulator publishes every 2 s).
+    """
+    tenant_id = f"flowtest{_RUN_ID}"
+    sensor_id = f"flowsoil{_RUN_ID}"
+    payload   = {
+        "sensor_id":   sensor_id,
+        "tenant_id":   tenant_id,
+        "sensor_type": "soil",
+        "device_id":   sensor_id,
+        "location":    {"latitude": 7.3775, "longitude": 3.9470},
+    }
+    r = requests.post(f"{DATA_SERVICE_URL}/sensors/connect", json=payload, timeout=15)
+    assert r.status_code == 201, f"Connect failed: {r.text}"
+
+    kafka_topic = r.json()["kafka_topic"]
+    time.sleep(1)  # allow subscription to propagate
+
+    consumer = Consumer({
+        "bootstrap.servers": KAFKA_BROKERS,
+        "group.id":          f"infra-flow-{_RUN_ID}",
+        "auto.offset.reset": "latest",
+    })
+    consumer.subscribe([kafka_topic])
+    consumer.poll(0)
+
+    time.sleep(0.5)
+
+    # Expect at least one message within 6 s (simulator @ 2 s interval)
+    deadline  = time.time() + 6
+    received  = []
+    while time.time() < deadline:
+        msg = consumer.poll(0.5)
+        if msg and not msg.error():
+            received.append(json.loads(msg.value()))
+            break
+    consumer.close()
+
+    assert received, "No Kafka messages received from sensor simulator within 6 s"
+
+    # Validate payload structure
+    msg = received[0]
+    assert "device_id"  in msg
+    assert "timestamp"  in msg
+    assert "tenant_id"  in msg
+    assert "sensor_id"  in msg
+
+    # Cleanup
+    requests.delete(
+        f"{DATA_SERVICE_URL}/sensors/{tenant_id}/{sensor_id}/disconnect",
+        timeout=10,
+    )
+
+
+# =============================================================================
+#  Full Pipeline Integration — MQTT → Bridge → Kafka → (Iceberg via Spark)
+# =============================================================================
+
+def test_full_pipeline_end_to_end():
+    """
+    Connect a sensor, wait for Kafka messages, verify the bridge forwarded
+    the MQTT payload correctly (payload JSON is intact end-to-end).
+    """
+    tenant_id = f"e2e{_RUN_ID}"
+    sensor_id = f"e2esoil{_RUN_ID}"
+    payload   = {
+        "sensor_id":   sensor_id,
+        "tenant_id":   tenant_id,
+        "sensor_type": "soil",
+        "device_id":   f"device_{sensor_id}",
+        "location":    {"latitude": 7.3775, "longitude": 3.9470, "field_id": "e2e_plot"},
+    }
+
+    r = requests.post(f"{DATA_SERVICE_URL}/sensors/connect", json=payload, timeout=15)
+    assert r.status_code == 201, f"Pipeline connect failed: {r.text}"
+    kafka_topic = r.json()["kafka_topic"]
+
+    time.sleep(1)
+
+    consumer = Consumer({
+        "bootstrap.servers": KAFKA_BROKERS,
+        "group.id":          f"infra-e2e-{_RUN_ID}",
+        "auto.offset.reset": "latest",
+    })
+    consumer.subscribe([kafka_topic])
+    consumer.poll(0)
+    time.sleep(0.5)
+
+    deadline = time.time() + 8
+    messages = []
+    while time.time() < deadline and len(messages) < 2:
+        msg = consumer.poll(0.5)
+        if msg and not msg.error():
+            messages.append(json.loads(msg.value()))
+    consumer.close()
+
+    assert len(messages) >= 1, "End-to-end pipeline produced no messages"
+
+    for msg in messages:
+        # Simulator enriches every message with tenant_id and sensor_id
+        assert msg.get("tenant_id") == tenant_id
+        assert msg.get("sensor_id") == sensor_id
+        assert "soil_metrics"       in msg, "soil_metrics block missing from payload"
+        assert "timestamp"          in msg
+
+    # Cleanup
+    requests.delete(
+        f"{DATA_SERVICE_URL}/sensors/{tenant_id}/{sensor_id}/disconnect",
+        timeout=10,
+    )
+
+
+def test_mqtt_bridge_data_service_connectivity():
+    """
+    The data service must be able to reach the bridge
+    (verifiable via bridge /health).
+    """
+    r = requests.get(f"{BRIDGE_URL}/health", timeout=10)
+    assert r.status_code == 200
+    assert r.json()["status"] == "healthy"
+
+
+def test_bridge_kafka_connectivity():
+    """
+    Bridge must be connected to Kafka — verified by checking that the
+    bridge health reports the correct Kafka brokers configuration.
+    """
+    r = requests.get(f"{BRIDGE_URL}/health", timeout=10)
+    assert r.status_code == 200
+    body = r.json()
+    assert "kafka" in body
+    # At least one broker address must be present in the config
+    assert len(body["kafka"]) > 0

@@ -1,0 +1,7 @@
+FROM eclipse-mosquitto:2.0
+
+# Config is volume-mounted at runtime (see docker-compose)
+# This Dockerfile exists to allow future customisation (e.g. adding
+# password files, TLS certs, ACL rules for production).
+
+EXPOSE 1883 9001

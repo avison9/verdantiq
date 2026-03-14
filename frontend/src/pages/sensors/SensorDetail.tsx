@@ -1,8 +1,11 @@
-import { useEffect, useRef, useState, useLayoutEffect } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import usePageTitle from "../../hooks/usePageTitle";
 import { useGetSensorQuery } from "../../redux/apislices/userDashboardApiSlice";
 import { STATUS_STYLES, sensorIcon } from "./sensorUtils";
+
+// Data service URL — override with VITE_DATA_SERVICE_URL in .env
+const DATA_SERVICE_URL = import.meta.env.VITE_DATA_SERVICE_URL ?? "http://localhost:8090";
 
 // ── Shared row ────────────────────────────────────────────────────────────────
 
@@ -35,43 +38,126 @@ function Card({ title, children, minHeight }: { title: string; children: React.R
   );
 }
 
-// ── Terminal ──────────────────────────────────────────────────────────────────
+// ── Terminal types ────────────────────────────────────────────────────────────
 
-const PLACEHOLDER_LINES = [
-  "VerdantIQ Sensor Terminal v1.0",
-  "──────────────────────────────────",
-  "Data services integration pending.",
-  "Real-time messages will stream here",
-  "once the pipeline is connected.",
-  "──────────────────────────────────",
-  "Waiting for messages...",
-];
+type ConnectState = "idle" | "connecting" | "streaming" | "error";
 
-function Terminal({ minHeight }: { minHeight?: number }) {
+interface TerminalLine {
+  id:      number;
+  type:    "info" | "data" | "error" | "system";
+  text:    string;
+  ts?:     string;
+}
+
+const MAX_LINES = 20;
+
+// ── Terminal component ────────────────────────────────────────────────────────
+
+function Terminal({
+  minHeight,
+  lines,
+  connectState,
+  onConnect,
+  onDisconnect,
+}: {
+  minHeight?:    number;
+  lines:         TerminalLine[];
+  connectState:  ConnectState;
+  onConnect:     () => void;
+  onDisconnect:  () => void;
+}) {
   const bottomRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { bottomRef.current?.scrollIntoView(); }, []);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [lines]);
+
+  const statusDot =
+    connectState === "streaming"  ? "bg-emerald-500" :
+    connectState === "connecting" ? "bg-yellow-400 animate-pulse" :
+    connectState === "error"      ? "bg-red-500" :
+    "bg-gray-500";
+
+  const statusLabel =
+    connectState === "streaming"  ? "live" :
+    connectState === "connecting" ? "connecting…" :
+    connectState === "error"      ? "error" :
+    "offline";
 
   return (
     <div
       className="bg-gray-950 rounded-2xl border border-gray-800 overflow-hidden flex flex-col"
       style={minHeight ? { minHeight } : undefined}
     >
+      {/* Title bar */}
       <div className="flex items-center gap-1.5 px-4 py-2.5 bg-gray-900 border-b border-gray-800 shrink-0">
         <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
         <span className="w-2.5 h-2.5 rounded-full bg-yellow-400" />
-        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+        <span className={`w-2.5 h-2.5 rounded-full ${statusDot}`} />
         <span className="ml-3 text-xs text-gray-500 font-mono select-none">sensor-messages</span>
-        <span className="ml-auto text-xs text-gray-600 font-mono">max 20 msgs</span>
+        <span className={`ml-2 text-xs font-mono ${
+          connectState === "streaming" ? "text-emerald-400" :
+          connectState === "error"     ? "text-red-400" : "text-gray-600"
+        }`}>{statusLabel}</span>
+        <span className="ml-auto text-xs text-gray-600 font-mono">max {MAX_LINES} msgs</span>
+
+        {/* Connect / Disconnect button */}
+        {connectState === "idle" || connectState === "error" ? (
+          <button
+            onClick={onConnect}
+            className="ml-2 px-2 py-0.5 rounded text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
+          >
+            Connect
+          </button>
+        ) : connectState === "connecting" ? (
+          <span className="ml-2 px-2 py-0.5 rounded text-xs font-semibold bg-gray-700 text-gray-400 cursor-not-allowed">
+            …
+          </span>
+        ) : (
+          <button
+            onClick={onDisconnect}
+            className="ml-2 px-2 py-0.5 rounded text-xs font-semibold bg-gray-700 hover:bg-red-700 text-gray-300 hover:text-white transition-colors"
+          >
+            Disconnect
+          </button>
+        )}
       </div>
+
+      {/* Message area */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-0.5 font-mono text-xs leading-5
                       [&::-webkit-scrollbar]:w-1.5
                       [&::-webkit-scrollbar-track]:bg-gray-900
                       [&::-webkit-scrollbar-thumb]:bg-gray-700
                       [&::-webkit-scrollbar-thumb]:rounded-full">
-        {PLACEHOLDER_LINES.map((line, i) => (
-          <p key={i} className="text-gray-500">{line}</p>
+
+        {lines.length === 0 && (
+          <>
+            <p className="text-gray-500">VerdantIQ Sensor Terminal v2.0</p>
+            <p className="text-gray-700">──────────────────────────────────</p>
+            <p className="text-gray-500">Press <span className="text-emerald-400">Connect</span> to start the IoT pipeline.</p>
+            <p className="text-gray-700">──────────────────────────────────</p>
+            <p className="text-emerald-400 animate-pulse">█</p>
+          </>
+        )}
+
+        {lines.map((line) => (
+          <p
+            key={line.id}
+            className={
+              line.type === "data"   ? "text-emerald-300" :
+              line.type === "error"  ? "text-red-400" :
+              line.type === "system" ? "text-yellow-300" :
+              "text-gray-400"
+            }
+          >
+            {line.ts && <span className="text-gray-600 mr-1">[{line.ts}]</span>}
+            {line.text}
+          </p>
         ))}
-        <p className="text-emerald-400 animate-pulse">█</p>
+
+        {connectState === "streaming" && (
+          <p className="text-emerald-400 animate-pulse">█</p>
+        )}
         <div ref={bottomRef} />
       </div>
     </div>
@@ -84,6 +170,9 @@ const Nil = () => <span className="text-gray-300">—</span>;
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
+let _lineId = 0;
+const nextId = () => ++_lineId;
+
 const SensorDetail = () => {
   const { sensorId } = useParams<{ sensorId: string }>();
   const navigate = useNavigate();
@@ -94,8 +183,7 @@ const SensorDetail = () => {
 
   usePageTitle(sensor ? `${sensor.sensor_name} — VerdantIQ` : "Sensor — VerdantIQ");
 
-  // Measure Sensor Info card height (tallest card after full UUID renders)
-  // and apply it to every other card so all 6 are identical in size.
+  // ── card height sync ────────────────────────────────────────────────────
   const refCardRef = useRef<HTMLDivElement>(null);
   const [cardHeight, setCardHeight] = useState<number | undefined>();
 
@@ -108,8 +196,128 @@ const SensorDetail = () => {
     return () => ro.disconnect();
   }, [sensor]);
 
+  // ── terminal / pipeline state ───────────────────────────────────────────
+  const [connectState, setConnectState] = useState<ConnectState>("idle");
+  const [lines, setLines]               = useState<TerminalLine[]>([]);
+  const wsRef                           = useRef<WebSocket | null>(null);
+
+  const pushLine = useCallback((text: string, type: TerminalLine["type"] = "info", ts?: string) => {
+    setLines((prev) => {
+      const next: TerminalLine = { id: nextId(), type, text, ts };
+      return prev.length >= MAX_LINES ? [...prev.slice(1), next] : [...prev, next];
+    });
+  }, []);
+
+  const handleConnect = useCallback(async () => {
+    if (!sensor) return;
+    setConnectState("connecting");
+    setLines([]);
+
+    pushLine("Initiating IoT pipeline…", "system");
+
+    const payload = {
+      sensor_id:   sensor.sensor_id,
+      tenant_id:   sensor.tenant_id,
+      sensor_type: sensor.sensor_type,
+      device_id:   sensor.sensor_id,
+      location: {
+        latitude:  parseFloat(sensor.sensor_metadata?.latitude  ?? "0") || 0,
+        longitude: parseFloat(sensor.sensor_metadata?.longitude ?? "0") || 0,
+      },
+    };
+
+    try {
+      const resp = await fetch(`${DATA_SERVICE_URL}/sensors/connect`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(payload),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.text();
+        throw new Error(`${resp.status}: ${err}`);
+      }
+
+      const data = await resp.json();
+      pushLine(`MQTT topic  : ${data.mqtt_topic}`,  "system");
+      pushLine(`Kafka topic : ${data.kafka_topic}`, "system");
+      pushLine("Pipeline ready — opening stream…",  "system");
+
+      // Open WebSocket to stream live Kafka messages
+      const wsUrl = `${DATA_SERVICE_URL.replace(/^http/, "ws")}/ws/${sensor.tenant_id}/${sensor.sensor_id}`;
+      const ws    = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        setConnectState("streaming");
+        pushLine("Stream connected ✓", "system");
+      };
+
+      ws.onmessage = (evt) => {
+        try {
+          const envelope = JSON.parse(evt.data as string);
+          const pl       = envelope.payload ?? {};
+          const ts       = new Date(envelope.ts).toISOString().slice(11, 19);
+          // Pretty-print the sensor-specific metrics block
+          const metricsKey = Object.keys(pl).find((k) =>
+            ["soil_metrics", "air_quality", "weather_data",
+             "temperature_data", "pollution_metrics"].includes(k)
+          );
+          const metrics = metricsKey ? pl[metricsKey] : pl;
+          const text    = JSON.stringify(metrics);
+          pushLine(`offset:${envelope.offset} ${text}`, "data", ts);
+        } catch {
+          pushLine(evt.data as string, "data");
+        }
+      };
+
+      ws.onerror = () => {
+        setConnectState("error");
+        pushLine("WebSocket error — check data service", "error");
+      };
+
+      ws.onclose = (ev) => {
+        if (connectState !== "idle") {
+          setConnectState("idle");
+          pushLine(`Stream closed (code ${ev.code})`, "system");
+        }
+      };
+
+    } catch (err) {
+      setConnectState("error");
+      pushLine(`Error: ${err instanceof Error ? err.message : String(err)}`, "error");
+    }
+  }, [sensor, pushLine, connectState]);
+
+  const handleDisconnect = useCallback(async () => {
+    wsRef.current?.close();
+    wsRef.current = null;
+
+    if (sensor) {
+      try {
+        await fetch(
+          `${DATA_SERVICE_URL}/sensors/${sensor.tenant_id}/${sensor.sensor_id}/disconnect`,
+          { method: "DELETE" },
+        );
+      } catch {
+        // best-effort
+      }
+    }
+
+    setConnectState("idle");
+    pushLine("Disconnected from pipeline", "system");
+  }, [sensor, pushLine]);
+
+  // cleanup on unmount
+  useEffect(() => {
+    return () => {
+      wsRef.current?.close();
+      wsRef.current = null;
+    };
+  }, []);
+
   const meta = sensor?.sensor_metadata ?? {};
-  const get = (key: string) => (meta[key] != null ? String(meta[key]) : null);
+  const get  = (key: string) => (meta[key] != null ? String(meta[key]) : null);
 
   const latitude     = get("latitude");
   const longitude    = get("longitude");
@@ -134,7 +342,7 @@ const SensorDetail = () => {
     : "—";
 
   const dataStatus = sensor?.status === "active" ? "Online" : "Offline";
-  const gps = latitude && longitude ? `${latitude}, ${longitude}` : null;
+  const gps        = latitude && longitude ? `${latitude}, ${longitude}` : null;
 
   const matchStyle = cardHeight ? { minHeight: cardHeight } : undefined;
 
@@ -209,6 +417,21 @@ const SensorDetail = () => {
                   sensor.status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500"
                 }`}>{dataStatus}</span>
               } />
+              {/* ── Connect to Data Service ── */}
+              <div className="pt-3 border-t border-gray-50 mt-1">
+                <DetailRow label="Pipeline" value={
+                  <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${
+                    connectState === "streaming"  ? "bg-emerald-100 text-emerald-700" :
+                    connectState === "connecting" ? "bg-yellow-100 text-yellow-700" :
+                    connectState === "error"      ? "bg-red-100 text-red-700" :
+                    "bg-gray-100 text-gray-500"
+                  }`}>
+                    {connectState === "streaming"  ? "Streaming" :
+                     connectState === "connecting" ? "Connecting…" :
+                     connectState === "error"      ? "Error" : "Offline"}
+                  </span>
+                } />
+              </div>
             </Card>
             </div>
 
@@ -227,11 +450,17 @@ const SensorDetail = () => {
             </Card>
           </div>
 
-          {/* ── Lower row: 3 placeholder cards sized to match upper row ── */}
+          {/* ── Lower row ── */}
           <div className="grid grid-cols-3 gap-4">
 
-            {/* Card 4 — Terminal */}
-            <Terminal minHeight={cardHeight} />
+            {/* Card 4 — Terminal (live WebSocket stream) */}
+            <Terminal
+              minHeight={cardHeight}
+              lines={lines}
+              connectState={connectState}
+              onConnect={handleConnect}
+              onDisconnect={handleDisconnect}
+            />
 
             {/* Card 5 — Analytics placeholder */}
             <div

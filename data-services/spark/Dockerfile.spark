@@ -29,7 +29,11 @@ RUN set -e && \
       "$MAVEN/com/amazonaws/aws-java-sdk-bundle/1.12.100/aws-java-sdk-bundle-1.12.100.jar" \
       "$MAVEN/com/google/guava/guava/30.1.1-jre/guava-30.1.1-jre.jar" \
       "$MAVEN/io/delta/delta-core_2.12/2.4.0/delta-core_2.12-2.4.0.jar" \
-      "$MAVEN/io/delta/delta-storage/2.4.0/delta-storage-2.4.0.jar" && \
+      "$MAVEN/io/delta/delta-storage/2.4.0/delta-storage-2.4.0.jar" \
+      "$MAVEN/org/apache/spark/spark-sql-kafka-0-10_2.12/3.5.0/spark-sql-kafka-0-10_2.12-3.5.0.jar" \
+      "$MAVEN/org/apache/spark/spark-token-provider-kafka-0-10_2.12/3.5.0/spark-token-provider-kafka-0-10_2.12-3.5.0.jar" \
+      "$MAVEN/org/apache/kafka/kafka-clients/3.4.1/kafka-clients-3.4.1.jar" \
+      "$MAVEN/org/apache/commons/commons-pool2/2.11.1/commons-pool2-2.11.1.jar" && \
     chown spark:spark /opt/spark/jars/*.jar
 
 
