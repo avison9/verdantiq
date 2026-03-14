@@ -17,8 +17,8 @@ set -euo pipefail
 BOOTSTRAP="${1:?Usage: $0 <bootstrap-server> <tenant-id> <sensor-id> [partitions] [replication-factor]}"
 TENANT_ID="${2:?Missing tenant-id}"
 SENSOR_ID="${3:?Missing sensor-id}"
-PARTITIONS="${4:-3}"
-REPLICATION="${5:-3}"
+PARTITIONS="${4:-2}"
+REPLICATION="${5:-2}"
 
 TOPIC="verdantiq.${TENANT_ID}.${SENSOR_ID}"
 

@@ -47,7 +47,7 @@ load_dotenv(override=True)
 
 MQTT_HOST      = os.getenv("MQTT_HOST",      "mosquitto")
 MQTT_PORT      = int(os.getenv("MQTT_PORT",  "1883"))
-KAFKA_BROKERS  = os.getenv("KAFKA_BROKERS",  "kafka1:9092,kafka2:9093,kafka3:9094,kafka4:9095")
+KAFKA_BROKERS  = os.getenv("KAFKA_BROKERS",  "kafka1:9092,kafka2:9093")
 BRIDGE_PORT    = int(os.getenv("BRIDGE_PORT", "8091"))
 ROUTES_FILE    = Path(os.getenv("ROUTES_FILE", "/tmp/routes.json"))
 
