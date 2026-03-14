@@ -6,15 +6,16 @@ import { useGetMeQuery } from "../../redux/apislices/authApiSlice";
 import { useCreateSensorMutation, useGetBillingQuery } from "../../redux/apislices/userDashboardApiSlice";
 
 const SENSOR_TYPES = [
-  { value: "temperature", label: "🌡️  Temperature" },
-  { value: "humidity",    label: "💧  Humidity" },
-  { value: "soil",        label: "🌱  Soil Moisture" },
-  { value: "weather",     label: "🌤️  Weather Station" },
-  { value: "pressure",    label: "🔵  Pressure" },
-  { value: "light",       label: "☀️  Light / PAR" },
-  { value: "co2",         label: "🌫️  CO₂" },
-  { value: "flow",        label: "💦  Water Flow" },
-  { value: "other",       label: "📡  Other" },
+  { value: "temperature",  label: "🌡️  Temperature" },
+  { value: "humidity",     label: "💧  Humidity" },
+  { value: "soil",         label: "🌱  Soil Moisture" },
+  { value: "weather",      label: "🌤️  Weather Station" },
+  { value: "pressure",     label: "🔵  Pressure" },
+  { value: "light",        label: "☀️  Light / PAR" },
+  { value: "co2",          label: "🌫️  CO₂" },
+  { value: "flow",         label: "💦  Water Flow" },
+  { value: "environment",  label: "🍃  Environment / Air Quality" },
+  { value: "other",        label: "📡  Other" },
 ];
 
 const OnboardSensor = () => {
