@@ -66,10 +66,13 @@ setup: ## One-time setup: install uv, npm packages, and pre-commit hooks
 # =============================================================================
 #  DEVELOPMENT SERVERS
 # =============================================================================
-.PHONY: dev dev-backend dev-dataservices dev-monitor dev-frontend
+.PHONY: dev dev-all dev-backend dev-dataservices dev-monitor dev-frontend
 
 dev: ## Start the full stack (backend + data services + monitoring)
-	$(COMPOSE_ALL) up --build
+	$(COMPOSE_ALL) --profile backend --profile dataservices --profile monitor up --build
+
+dev-all: ## Start all services except monitoring (backend + data services)
+	$(COMPOSE_ALL) --profile backend --profile dataservices up --build
 
 dev-backend: ## Start auth + tenant + sensor + gateway + postgres
 	$(COMPOSE_BACKEND) --profile backend up --build
