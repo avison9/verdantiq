@@ -514,12 +514,22 @@ services:
 
 volumes:
   minio_data:
+    name: verdantiq_minio_data
   prometheus_data:
+    name: verdantiq_prometheus_data
   grafana_data:
+    name: verdantiq_grafana_data
   zk_data1:
+    name: verdantiq_zk_data1
   zk_log1:
+    name: verdantiq_zk_log1
   zk_data2:
+    name: verdantiq_zk_data2
   zk_log2:
+    name: verdantiq_zk_log2
   spark_data:
+    name: verdantiq_spark_data
   trino_data:
+    name: verdantiq_trino_data
   mosquitto_data:
+    name: verdantiq_mosquitto_data

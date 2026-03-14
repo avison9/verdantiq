@@ -161,3 +161,4 @@ services:
 
 volumes:
   pg_data:
+    name: verdantiq_pg_data
