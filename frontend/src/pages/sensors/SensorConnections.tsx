@@ -411,7 +411,11 @@ const SensorConnections = () => {
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-gray-400 uppercase tracking-wide">Data Format</span>
-                    <span className="text-gray-600">Avro (Schema Registry)</span>
+                    <span className="text-gray-600">
+                      {s.sensor_metadata?.data_format
+                        ? String(s.sensor_metadata.data_format).toUpperCase()
+                        : "—"}
+                    </span>
                   </div>
                 </div>
 
