@@ -17,6 +17,11 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     # Idempotent migrations — add new columns here; IF NOT EXISTS makes them safe to re-run
     with engine.connect() as conn:
+        # Ensure tenant IDs start from 101 (bump sequence only if still below 101)
+        conn.execute(text(
+            "SELECT CASE WHEN last_value < 101 THEN setval('tenants_tenant_id_seq', 100, true) "
+            "ELSE last_value END FROM tenants_tenant_id_seq"
+        ))
         conn.commit()
     yield
 
