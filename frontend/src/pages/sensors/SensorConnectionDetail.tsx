@@ -261,9 +261,10 @@ const SensorConnectionDetail = () => {
   // Drives live relative-time updates across all rendered EventRows
   useTick(1000);
 
-  const [page,           setPage]           = useState(1);
-  const [perPage,        setPerPage]        = useState<(typeof PER_PAGE_OPTIONS)[number]>(20);
-  const [pipelineStatus, setPipelineStatus] = useState<PipelineStatus | null>(null);
+  const [page,             setPage]             = useState(1);
+  const [perPage,          setPerPage]          = useState<(typeof PER_PAGE_OPTIONS)[number]>(20);
+  const [pipelineStatus,   setPipelineStatus]   = useState<PipelineStatus | null>(null);
+  const [liveMessageCount, setLiveMessageCount] = useState<number | null>(null);
 
   // Bug 1: poll sensor every 30 s so message_count updates from pipeline
   const { data: sensor, isLoading: sensorLoading } = useGetSensorQuery(sensorId ?? "", {
@@ -275,6 +276,25 @@ const SensorConnectionDetail = () => {
     { sensor_id: sensorId ?? "", page, per_page: perPage },
     { skip: !sensorId, pollingInterval: 4000 },
   );
+
+  // Live message count from Kafka watermarks — independent of terminal WebSocket
+  useEffect(() => {
+    if (!sensor) return;
+    const poll = async () => {
+      try {
+        const r = await fetch(
+          `${DATA_SERVICE_URL}/sensors/${sensor.tenant_id}/${sensor.sensor_id}/message-count`,
+          { signal: AbortSignal.timeout(8000) },
+        );
+        if (!r.ok) return;
+        const body = await r.json() as { message_count: number };
+        if (body.message_count != null) setLiveMessageCount(body.message_count);
+      } catch { /* ignore */ }
+    };
+    poll();
+    const id = setInterval(poll, 30_000);
+    return () => clearInterval(id);
+  }, [sensor]);
 
   // Poll data service every 5 s to show live pipeline active/offline banner
   useEffect(() => {
@@ -358,7 +378,9 @@ const SensorConnectionDetail = () => {
         </div>
         <div>
           <p className="text-gray-400 uppercase tracking-wide mb-0.5">Total Messages</p>
-          <p className="text-gray-700">{sensor.message_count.toLocaleString()}</p>
+          <p className="text-gray-700">
+            {(liveMessageCount ?? sensor.message_count).toLocaleString()}
+          </p>
         </div>
       </div>
 
