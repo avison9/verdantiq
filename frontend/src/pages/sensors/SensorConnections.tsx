@@ -25,9 +25,7 @@ async function fetchReplicationFactor(topic: string): Promise<number | null> {
     if (!r.ok) return null;
     const body = await r.json() as { replication_factor: number };
     return body.replication_factor;
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 // ── Pipeline step config ───────────────────────────────────────────────────────
@@ -44,9 +42,9 @@ const PIPELINE_STEPS = [
 type StepStatus = "idle" | "in_progress" | "done" | "error";
 
 interface PipelineState {
-  steps:     StepStatus[];
-  error?:    string;
-  done:      boolean;
+  steps:      StepStatus[];
+  error?:     string;
+  done:       boolean;
   mqttTopic?:  string;
   kafkaTopic?: string;
 }
@@ -95,10 +93,10 @@ function CopyButton({ value }: { value: string }) {
 
 function StepRow({ label, status }: { label: string; status: StepStatus }) {
   const icon =
-    status === "done"       ? <span className="text-emerald-500">✓</span> :
-    status === "in_progress"? <span className="animate-spin inline-block text-yellow-500">⟳</span> :
-    status === "error"      ? <span className="text-red-500">✕</span> :
-                              <span className="text-gray-300">○</span>;
+    status === "done"        ? <span className="text-emerald-500">✓</span> :
+    status === "in_progress" ? <span className="animate-spin inline-block text-yellow-500">⟳</span> :
+    status === "error"       ? <span className="text-red-500">✕</span> :
+                               <span className="text-gray-300">○</span>;
 
   const textCls =
     status === "done"        ? "text-gray-700" :
@@ -139,30 +137,26 @@ const SensorConnections = () => {
   const [page,    setPage]    = useState(1);
   const [perPage, setPerPage] = useState<(typeof PER_PAGE_OPTIONS)[number]>(10);
 
-  const { data: me }                          = useGetMeQuery();
-  const { data, isLoading, isFetching }       = useGetSensorsQuery(
+  const { data: me }                    = useGetMeQuery();
+  // Bug 1: poll every 30 s so message_count updates from pipeline
+  const { data, isLoading, isFetching } = useGetSensorsQuery(
     { tenant_id: me?.tenant_id ?? 0, page, per_page: perPage },
-    { skip: !me },
+    { skip: !me, pollingInterval: 30_000 },
   );
-  const [updateStatus]                        = useUpdateSensorStatusMutation();
-  const [updateSensor]                        = useUpdateSensorMutation();
-  const [initiateConnection]                  = useInitiateConnectionMutation();
-  const [logConnectionEvent]                  = useLogConnectionEventMutation();
+  const [updateStatus]      = useUpdateSensorStatusMutation();
+  const [updateSensor]      = useUpdateSensorMutation();
+  const [initiateConnection]= useInitiateConnectionMutation();
+  const [logConnectionEvent]= useLogConnectionEventMutation();
 
-  const [updatingId,  setUpdatingId]          = useState<string | null>(null);
-  // pipeline state keyed by sensor_id
-  const [pipelines, setPipelines]             = useState<Record<string, PipelineState>>({});
+  const [disconnectingId, setDisconnectingId]     = useState<string | null>(null);
+  const [pipelines,       setPipelines]           = useState<Record<string, PipelineState>>({});
   const [replicationFactor, setReplicationFactor] = useState<number | null>(null);
 
-  // Fetch Kafka replication factor once we have at least one sensor topic to probe.
-  // RF is a cluster-wide setting so one topic is representative for all sensors.
   useEffect(() => {
     if (!data?.items.length || !me) return;
     const first = data.items[0];
     const topic = `verdantiq.${me.tenant_id}.${first.sensor_id}`;
-    fetchReplicationFactor(topic).then(rf => {
-      if (rf !== null) setReplicationFactor(rf);
-    });
+    fetchReplicationFactor(topic).then(rf => { if (rf !== null) setReplicationFactor(rf); });
   }, [data, me]);
 
   const sensors    = data?.items ?? [];
@@ -170,12 +164,11 @@ const SensorConnections = () => {
   const totalPages = data?.pages ?? 1;
   const pageRange  = buildPageRange(page, totalPages);
 
-  // advance a single step to in_progress
   const setStep = (sid: string, idx: number, status: StepStatus) =>
     setPipelines(prev => {
-      const p = { ...(prev[sid] ?? initPipeline()) };
+      const p     = { ...(prev[sid] ?? initPipeline()) };
       const steps = [...p.steps] as StepStatus[];
-      steps[idx] = status;
+      steps[idx]  = status;
       return { ...prev, [sid]: { ...p, steps } };
     });
 
@@ -192,7 +185,7 @@ const SensorConnections = () => {
 
   const markError = (sid: string, error: string) =>
     setPipelines(prev => {
-      const p = { ...(prev[sid] ?? initPipeline()) };
+      const p     = { ...(prev[sid] ?? initPipeline()) };
       const steps = p.steps.map(s => s === "in_progress" ? "error" : s) as StepStatus[];
       return { ...prev, [sid]: { ...p, steps, error, done: false } };
     });
@@ -204,17 +197,13 @@ const SensorConnections = () => {
     setPipelines(prev => ({ ...prev, [sid]: initPipeline() }));
     setStep(sid, 0, "in_progress");
 
-    // Step 0 — register connection in backend (logs connection_initiated event)
     try {
       await initiateConnection(sid).unwrap();
       setStep(sid, 0, "done");
     } catch {
-      // non-fatal — continue to data service regardless
-      setStep(sid, 0, "done");
+      setStep(sid, 0, "done"); // non-fatal
     }
 
-    // Steps 1-4: timers only advance the spinner to the next step.
-    // They never mark "done" — only a confirmed HTTP 201 does that.
     setStep(sid, 1, "in_progress");
     const timers: ReturnType<typeof setTimeout>[] = [];
     timers.push(setTimeout(() => setStep(sid, 2, "in_progress"), 900));
@@ -239,14 +228,11 @@ const SensorConnections = () => {
         body:    JSON.stringify(payload),
       });
 
-      // Parse body regardless of HTTP status — it always contains per-step results
       let result: Record<string, unknown> = {};
-      try { result = await resp.json(); } catch { /* ignore parse error */ }
+      try { result = await resp.json(); } catch { /* ignore */ }
 
-      // Cancel pending spinner timers — outcome is now known
       timers.forEach(clearTimeout);
 
-      // Log each step as it actually happened (success / failed / skipped)
       const stepEventMap: Record<string, string> = {
         kafka_topic_created: "kafka_topic_created",
         mqtt_topic_created:  "mqtt_topic_created",
@@ -271,7 +257,6 @@ const SensorConnections = () => {
         return;
       }
 
-      // Full success — mark pipeline ready
       setStep(sid, 5, "in_progress");
       setTimeout(() => {
         markAllDone(sid, {
@@ -288,13 +273,24 @@ const SensorConnections = () => {
         message:    "Full IoT pipeline is ready and streaming",
       });
 
-      // Update backend: status → active, persist protocol + data_format
+      // Bug 5: log reconnect event if sensor was previously inactive
+      if (sensor.status === "inactive" || sensor.status === "error") {
+        logConnectionEvent({
+          sensor_id:  sid,
+          event_type: "sensor_reconnected",
+          status:     "success",
+          message:    "Sensor reconnected to network — resuming data pipeline",
+        });
+      }
+
+      // Update backend: active status, Bug 3: persist protocol, data_format, network
       updateStatus({ sensor_id: sid, status: "active" });
       updateSensor({
         sensor_id:       sid,
         sensor_metadata: {
           protocol:    String(result.protocol    ?? "mqtt"),
           data_format: String(result.data_format ?? "json"),
+          network:     String(result.network     ?? "WiFi"),
         },
       });
 
@@ -303,7 +299,6 @@ const SensorConnections = () => {
       const msg = err instanceof Error ? err.message : String(err);
       markError(sid, msg);
       toast.error(`Pipeline setup failed: ${msg}`);
-      // Log the connection failure itself
       logConnectionEvent({
         sensor_id:  sid,
         event_type: "connection_initiated",
@@ -313,15 +308,33 @@ const SensorConnections = () => {
     }
   };
 
-  const handleStatusChange = async (sensor_id: string, newStatus: SensorStatus) => {
-    setUpdatingId(sensor_id);
+  // ── Bug 5: disconnect stops pipeline and IoT simulator ────────────────────
+
+  const handleDisconnect = async (sensor: Sensor) => {
+    const sid = sensor.sensor_id;
+    setDisconnectingId(sid);
     try {
-      await updateStatus({ sensor_id, status: newStatus }).unwrap();
-      toast.success(`Status updated to ${newStatus}`);
+      // Stop data service pipeline for this sensor
+      await fetch(`${DATA_SERVICE_URL}/sensors/${sensor.tenant_id}/${sid}/disconnect`, {
+        method: "DELETE",
+      });
     } catch {
-      toast.error("Failed to update status");
+      // If data service is unreachable still update status
     }
-    setUpdatingId(null);
+    try {
+      await updateStatus({ sensor_id: sid, status: "inactive" as SensorStatus }).unwrap();
+      // Log disconnect event in trail
+      logConnectionEvent({
+        sensor_id:  sid,
+        event_type: "sensor_disconnected",
+        status:     "success",
+        message:    "Sensor disconnected from network — pipeline stopped",
+      });
+      toast.success("Sensor disconnected from network");
+    } catch {
+      toast.error("Failed to disconnect sensor");
+    }
+    setDisconnectingId(null);
   };
 
   // ── render ────────────────────────────────────────────────────────────────
@@ -353,10 +366,12 @@ const SensorConnections = () => {
       ) : (
         <div className={`space-y-4 max-w-3xl transition-opacity ${isFetching ? "opacity-60" : ""}`}>
           {sensors.map((s) => {
-            const messageTopic = `verdantiq.sensors.${me?.tenant_id}.${s.sensor_id}`;
-            const isUpdating   = updatingId  === s.sensor_id;
-            const pipeline     = pipelines[s.sensor_id];
-            const isConnecting = pipeline && !pipeline.done && !pipeline.error;
+            const messageTopic  = `verdantiq.sensors.${me?.tenant_id}.${s.sensor_id}`;
+            const isDisconn     = disconnectingId === s.sensor_id;
+            const pipeline      = pipelines[s.sensor_id];
+            const isConnecting  = pipeline && !pipeline.done && !pipeline.error;
+            // Bug 3: read network from sensor_metadata
+            const network       = s.sensor_metadata?.network ? String(s.sensor_metadata.network) : null;
 
             return (
               <div key={s.sensor_id}
@@ -409,6 +424,13 @@ const SensorConnections = () => {
                       {replicationFactor !== null ? replicationFactor : "—"}
                     </span>
                   </div>
+                  {/* Bug 3: network field dynamically populated */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-400 uppercase tracking-wide">Network</span>
+                    <span className="text-gray-600">
+                      {network ?? "—"}
+                    </span>
+                  </div>
                   <div className="flex items-center justify-between">
                     <span className="text-gray-400 uppercase tracking-wide">Data Format</span>
                     <span className="text-gray-600">
@@ -416,6 +438,11 @@ const SensorConnections = () => {
                         ? String(s.sensor_metadata.data_format).toUpperCase()
                         : "—"}
                     </span>
+                  </div>
+                  {/* Bug 1: message count from pipeline polling */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-400 uppercase tracking-wide">Total Messages</span>
+                    <span className="font-semibold text-gray-700">{s.message_count.toLocaleString()}</span>
                   </div>
                 </div>
 
@@ -470,6 +497,7 @@ const SensorConnections = () => {
                       : "Reconnect your device to resume data flow."}
                   </p>
                   <div className="flex items-center gap-2 shrink-0 ml-4">
+                    {/* Connect / Reconnect button */}
                     {(s.status === "pending" || s.status === "inactive" || s.status === "error") && !pipeline?.done && (
                       <button
                         disabled={!!isConnecting}
@@ -481,13 +509,14 @@ const SensorConnections = () => {
                          "Connect to Network"}
                       </button>
                     )}
+                    {/* Bug 5: Disconnect stops pipeline and IoT simulator */}
                     {s.status === "active" && !pipeline && (
                       <button
-                        disabled={isUpdating}
-                        onClick={() => handleStatusChange(s.sensor_id, "inactive")}
-                        className="text-xs font-medium border border-gray-200 text-gray-500 hover:bg-gray-50 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                        disabled={isDisconn}
+                        onClick={() => handleDisconnect(s)}
+                        className="text-xs font-medium border border-red-200 text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
                       >
-                        {isUpdating ? "Updating…" : "Deactivate"}
+                        {isDisconn ? "Disconnecting…" : "Disconnect"}
                       </button>
                     )}
                   </div>
