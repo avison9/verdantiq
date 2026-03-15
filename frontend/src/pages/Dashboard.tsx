@@ -1,7 +1,10 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import usePageTitle from "../hooks/usePageTitle";
 import { useGetMeQuery } from "../redux/apislices/authApiSlice";
 import { useGetSensorsQuery, useGetBillingQuery } from "../redux/apislices/userDashboardApiSlice";
+
+const DATA_SERVICE_URL = import.meta.env.VITE_DATA_SERVICE_URL ?? "http://localhost:8090";
 
 const COST_PER_MESSAGE = 0.00005;
 
@@ -44,13 +47,33 @@ const Dashboard = () => {
     pollingInterval: 30_000,
   });
 
+  // Live message counts from Kafka watermarks — independent of terminal WebSocket
+  const [liveCounts, setLiveCounts] = useState<Record<string, number>>({});
+  useEffect(() => {
+    const fetchCounts = async () => {
+      try {
+        const r = await fetch(`${DATA_SERVICE_URL}/sensors/message-counts`, {
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!r.ok) return;
+        const body = await r.json() as { counts: Record<string, number> };
+        setLiveCounts(prev => ({ ...prev, ...(body.counts ?? {}) }));
+      } catch { /* ignore */ }
+    };
+    fetchCounts();
+    const id = setInterval(fetchCounts, 30_000);
+    return () => clearInterval(id);
+  }, []);
+
   const sensors       = sensorsPage?.items ?? [];
   const totalSensors  = sensorsPage?.total ?? 0;
   const activeSensors = sensors.filter((s) => s.status === "active").length;
   const errorSensors  = sensors.filter((s) => s.status === "error").length;
 
-  // Feature 4: billing overview calculations
-  const totalMessageCost = sensors.reduce((sum, s) => sum + s.message_count * COST_PER_MESSAGE, 0);
+  // Billing cost uses live Kafka counts where available, falls back to DB value
+  const totalMessageCost = sensors.reduce(
+    (sum, s) => sum + (liveCounts[s.sensor_id] ?? s.message_count) * COST_PER_MESSAGE, 0,
+  );
 
   if (meLoading) {
     return (
@@ -189,7 +212,7 @@ const Dashboard = () => {
                       {s.location ?? <span className="text-gray-300">—</span>}
                     </td>
                     <td className="px-6 py-3 text-right text-gray-600">
-                      {s.message_count.toLocaleString()}
+                      {(liveCounts[s.sensor_id] ?? s.message_count).toLocaleString()}
                     </td>
                     <td className="px-6 py-3">
                       <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${

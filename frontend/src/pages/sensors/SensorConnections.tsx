@@ -152,6 +152,24 @@ const SensorConnections = () => {
   const [pipelines,       setPipelines]           = useState<Record<string, PipelineState>>({});
   const [replicationFactor, setReplicationFactor] = useState<number | null>(null);
 
+  // Live message counts from Kafka watermarks — independent of terminal WebSocket
+  const [liveCounts, setLiveCounts] = useState<Record<string, number>>({});
+  useEffect(() => {
+    const fetchCounts = async () => {
+      try {
+        const r = await fetch(`${DATA_SERVICE_URL}/sensors/message-counts`, {
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!r.ok) return;
+        const body = await r.json() as { counts: Record<string, number> };
+        setLiveCounts(prev => ({ ...prev, ...(body.counts ?? {}) }));
+      } catch { /* ignore */ }
+    };
+    fetchCounts();
+    const id = setInterval(fetchCounts, 30_000);
+    return () => clearInterval(id);
+  }, []);
+
   useEffect(() => {
     if (!data?.items.length || !me) return;
     const first = data.items[0];
@@ -439,10 +457,12 @@ const SensorConnections = () => {
                         : "—"}
                     </span>
                   </div>
-                  {/* Bug 1: message count from pipeline polling */}
+                  {/* Message count from Kafka pipeline — independent of terminal */}
                   <div className="flex items-center justify-between">
                     <span className="text-gray-400 uppercase tracking-wide">Total Messages</span>
-                    <span className="font-semibold text-gray-700">{s.message_count.toLocaleString()}</span>
+                    <span className="font-semibold text-gray-700">
+                      {(liveCounts[s.sensor_id] ?? s.message_count).toLocaleString()}
+                    </span>
                   </div>
                 </div>
 

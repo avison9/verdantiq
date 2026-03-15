@@ -13,6 +13,7 @@ import { STATUS_STYLES, sensorIcon } from "./sensorUtils";
 const DATA_SERVICE_URL  = import.meta.env.VITE_DATA_SERVICE_URL ?? "http://localhost:8090";
 const COST_PER_MESSAGE  = 0.00005;   // $0.00005 per message = $0.05 per 1 000 msgs
 const ONE_HOUR_MS       = 3_600_000; // hardware pipeline refresh cadence
+const MSG_POLL_MS       = 30_000;    // message count pipeline refresh cadence
 
 async function fetchReplicationFactor(topic: string): Promise<number | null> {
   try {
@@ -23,6 +24,22 @@ async function fetchReplicationFactor(topic: string): Promise<number | null> {
     if (!r.ok) return null;
     const body = await r.json() as { replication_factor: number };
     return body.replication_factor;
+  } catch { return null; }
+}
+
+// Fetch message count directly from Kafka watermarks via data service (no terminal needed)
+async function fetchMessageCountFromPipeline(
+  tenantId: string | number,
+  sensorId: string,
+): Promise<number | null> {
+  try {
+    const r = await fetch(
+      `${DATA_SERVICE_URL}/sensors/${tenantId}/${sensorId}/message-count`,
+      { signal: AbortSignal.timeout(8000) },
+    );
+    if (!r.ok) return null;
+    const body = await r.json() as { message_count: number };
+    return body.message_count ?? null;
   } catch { return null; }
 }
 
@@ -266,6 +283,7 @@ const SensorDetail = () => {
   const [replicationFactor, setReplicationFactor] = useState<number | null>(null);
   const [pipelineActive,    setPipelineActive]    = useState(false);
   const [hwInfo,            setHwInfo]            = useState<HardwareInfo>({});
+  const [liveMessageCount,  setLiveMessageCount]  = useState<number | null>(null);
   const wsRef          = useRef<WebSocket | null>(null);
   const hwPatchedRef   = useRef(false);
 
@@ -513,13 +531,26 @@ const SensorDetail = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sensor?.sensor_id]);
 
+  // Message count polling from pipeline — runs every 30 s, independent of terminal
+  useEffect(() => {
+    if (!sensor) return;
+    const poll = () =>
+      fetchMessageCountFromPipeline(sensor.tenant_id, sensor.sensor_id)
+        .then(c => { if (c !== null) setLiveMessageCount(c); });
+    poll();
+    const id = setInterval(poll, MSG_POLL_MS);
+    return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sensor?.sensor_id]);
+
   // Feature 1: auto-deactivate if running cost exceeds sensor budget
   useEffect(() => {
     if (!sensor) return;
     const budget = sensor.sensor_metadata?.budget;
     if (!budget) return;
     const budgetNum    = parseFloat(String(budget));
-    const runningCost  = sensor.message_count * COST_PER_MESSAGE;
+    const count        = liveMessageCount ?? sensor.message_count;
+    const runningCost  = count * COST_PER_MESSAGE;
     if (!isNaN(budgetNum) && budgetNum > 0 && runningCost >= budgetNum && sensor.status === "active") {
       updateStatus({ sensor_id: sensor.sensor_id, status: "inactive" });
       fetch(`${DATA_SERVICE_URL}/sensors/${sensor.tenant_id}/${sensor.sensor_id}/disconnect`, {
@@ -533,7 +564,7 @@ const SensorDetail = () => {
       });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sensor?.message_count]);
+  }, [sensor?.message_count, liveMessageCount]);
 
   const meta = sensor?.sensor_metadata ?? {};
   const get  = (key: string) => (meta[key] != null ? String(meta[key]) : null);
@@ -586,8 +617,8 @@ const SensorDetail = () => {
     pipelineActive                ? "bg-blue-100    text-blue-700"    :
     "bg-gray-100 text-gray-500";
 
-  // Feature 1: billing card values
-  const messageCount  = sensor?.message_count ?? 0;
+  // Feature 1: billing card values — prefer live Kafka count over stale DB value
+  const messageCount  = liveMessageCount ?? sensor?.message_count ?? 0;
   const runningCost   = messageCount * COST_PER_MESSAGE;
   const lastMonthCost = get("last_month_cost");
   const budgetRaw     = get("budget");
