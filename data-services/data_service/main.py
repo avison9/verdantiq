@@ -14,6 +14,11 @@ Central orchestrator for the IoT data pipeline. Exposes:
   GET  /sensors/active
       List all currently simulating sensors
 
+  GET  /sensors/{tenant_id}/{sensor_id}/hardware
+      Read the latest hardware_info from the sensor's Kafka topic.
+      Used by the frontend to update battery/memory every hour without
+      requiring the terminal WebSocket to be open.
+
   WS  /ws/{tenant_id}/{sensor_id}
       Live Kafka consumer → WebSocket stream for the terminal card
 
@@ -33,8 +38,11 @@ import sys
 from contextlib import asynccontextmanager
 from typing import Dict
 
+import time
+
 import httpx
 from aiokafka import AIOKafkaConsumer
+from confluent_kafka import Consumer, TopicPartition
 from confluent_kafka.admin import AdminClient, NewTopic
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -308,6 +316,75 @@ async def disconnect_sensor(tenant_id: str, sensor_id: str):
 
     log.info("Sensor disconnected: %s", key)
     return {"status": "disconnected", "sensor_id": sensor_id}
+
+
+# ── Hardware info — pipeline read (no WebSocket required) ─────────────────────
+
+
+@app.get("/sensors/{tenant_id}/{sensor_id}/hardware")
+async def get_sensor_hardware(tenant_id: str, sensor_id: str):
+    """
+    Read the latest hardware_info from the sensor's Kafka topic by seeking
+    to near the end of each partition.  Runs confluent_kafka (blocking) in
+    a thread-pool executor so it does not block the event loop.
+    Returns 404 if the topic is empty or contains no hardware_info yet.
+    """
+    topic = f"verdantiq.{tenant_id}.{sensor_id}"
+
+    def _read_latest_hardware() -> dict | None:
+        conf = {
+            "bootstrap.servers": KAFKA_BROKERS,
+            "group.id":          f"hw-fetch-{sensor_id}-{int(time.time())}",
+            "enable.auto.commit": False,
+        }
+        c = Consumer(conf)
+        try:
+            # Discover partitions
+            meta = c.list_topics(topic, timeout=5)
+            if topic not in meta.topics or meta.topics[topic].error:
+                return None
+            partition_ids = list(meta.topics[topic].partitions.keys())
+            if not partition_ids:
+                return None
+
+            # Build TopicPartition objects and seek each to (end - 10)
+            tps = []
+            for pid in partition_ids:
+                tp    = TopicPartition(topic, pid)
+                lo, hi = c.get_watermark_offsets(tp, timeout=5)
+                seek_to = max(lo, hi - 10)
+                tps.append(TopicPartition(topic, pid, seek_to))
+
+            c.assign(tps)
+
+            hardware_info: dict | None = None
+            deadline = time.monotonic() + 4.0   # read for up to 4 s
+            while time.monotonic() < deadline:
+                msg = c.poll(timeout=0.3)
+                if msg is None:
+                    continue
+                if msg.error():
+                    continue
+                try:
+                    payload = json.loads(msg.value().decode("utf-8", errors="replace"))
+                    hw = payload.get("hardware_info")
+                    if hw and isinstance(hw, dict):
+                        hardware_info = hw  # keep updating; last one wins
+                except Exception:
+                    pass
+            return hardware_info
+        finally:
+            c.close()
+
+    hardware_info = await asyncio.get_event_loop().run_in_executor(
+        None, _read_latest_hardware
+    )
+    if not hardware_info:
+        raise HTTPException(
+            status_code=404,
+            detail="No hardware_info found in recent Kafka messages for this sensor",
+        )
+    return {"tenant_id": tenant_id, "sensor_id": sensor_id, "hardware_info": hardware_info}
 
 
 # ── WebSocket — live Kafka consumer → terminal ────────────────────────────────
