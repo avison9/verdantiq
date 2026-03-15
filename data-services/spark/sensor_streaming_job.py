@@ -30,6 +30,7 @@ import os
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import (
+    coalesce,
     col,
     from_json,
     get_json_object,
@@ -170,10 +171,11 @@ def ensure_table(spark: SparkSession, sensor_type: str) -> str:
 
 # Minimal schema to parse the envelope fields we always expect
 _ENVELOPE_SCHEMA = StructType([
-    StructField("device_id",  StringType()),
-    StructField("timestamp",  StringType()),
-    StructField("sensor_id",  StringType()),
-    StructField("tenant_id",  StringType()),
+    StructField("device_id",   StringType()),
+    StructField("timestamp",   StringType()),
+    StructField("sensor_id",   StringType()),
+    StructField("tenant_id",   StringType()),
+    StructField("sensor_type", StringType()),
 ])
 
 # Metric key → JSON path for each sensor type
@@ -199,20 +201,18 @@ def _process_batch(df: DataFrame, batch_id: int, spark: SparkSession) -> None:
     # ── 1. Parse raw Kafka message ──────────────────────────────────────────
     parsed = (
         df
-        .withColumn("json_str",  col("value").cast("string"))
+        .withColumn("json_str",    col("value").cast("string"))
         .withColumn("kafka_topic", col("topic").cast("string"))
-        .withColumn("env",       from_json(col("json_str"), _ENVELOPE_SCHEMA))
-        .withColumn("device_id", col("env.device_id"))
+        .withColumn("env",         from_json(col("json_str"), _ENVELOPE_SCHEMA))
+        .withColumn("device_id",   col("env.device_id"))
         .withColumn("timestamp_str", col("env.timestamp"))
-        # tenant_id / sensor_id come from the envelope OR from topic
-        .withColumn("tenant_id_env", col("env.tenant_id"))
-        .withColumn("sensor_id_env", col("env.sensor_id"))
-        # Also derive from topic:  verdantiq.{tenant}.{sensor}
+        # Derive tenant_id / sensor_id from topic first, fall back to envelope
+        # Topic format: verdantiq.{tenant_id}.{sensor_id}
         .withColumn("topic_parts", split(col("kafka_topic"), r"\."))
         .withColumn("tenant_id",
-                    col("topic_parts").getItem(1))
+                    coalesce(col("topic_parts").getItem(1), col("env.tenant_id")))
         .withColumn("sensor_id",
-                    col("topic_parts").getItem(2))
+                    coalesce(col("topic_parts").getItem(2), col("env.sensor_id")))
     )
 
     # ── 2. Group by topic (= per sensor) ───────────────────────────────────
@@ -228,14 +228,15 @@ def _process_batch(df: DataFrame, batch_id: int, spark: SparkSession) -> None:
         sensor_id = parts[2]
 
         # ── 3. Determine sensor_type ────────────────────────────────────────
-        # We embed sensor_type in the payload as part of the simulator.
-        # Fall back to "unknown" if absent; those rows still get stored.
+        # Primary: env.sensor_type (parsed from envelope schema — zero extra scan).
+        # Fallback: get_json_object for older payloads that predate the envelope fix.
         topic_df = parsed.filter(col("kafka_topic") == topic)
         types_found = [
             r.sensor_type
             for r in topic_df
             .withColumn("sensor_type",
-                        get_json_object(col("json_str"), "$.sensor_type"))
+                        coalesce(col("env.sensor_type"),
+                                 get_json_object(col("json_str"), "$.sensor_type")))
             .select("sensor_type").distinct().collect()
             if r.sensor_type
         ]
