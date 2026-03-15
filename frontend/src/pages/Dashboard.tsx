@@ -3,6 +3,8 @@ import usePageTitle from "../hooks/usePageTitle";
 import { useGetMeQuery } from "../redux/apislices/authApiSlice";
 import { useGetSensorsQuery, useGetBillingQuery } from "../redux/apislices/userDashboardApiSlice";
 
+const COST_PER_MESSAGE = 0.00005;
+
 const STATUS_STYLES: Record<string, string> = {
   active:      "bg-emerald-100 text-emerald-700",
   inactive:    "bg-gray-100 text-gray-500",
@@ -32,16 +34,23 @@ const Dashboard = () => {
   usePageTitle("Dashboard — VerdantIQ");
 
   const { data: me, isLoading: meLoading } = useGetMeQuery();
+  // Bug 1: poll every 30 s so message counts update from pipeline
   const { data: sensorsPage, isLoading: sensorsLoading } = useGetSensorsQuery(
     { tenant_id: me?.tenant_id ?? 0, per_page: 10 },
-    { skip: !me },
+    { skip: !me, pollingInterval: 30_000 },
   );
-  const { data: billing } = useGetBillingQuery(undefined, { skip: !me });
+  const { data: billing } = useGetBillingQuery(undefined, {
+    skip: !me,
+    pollingInterval: 30_000,
+  });
 
-  const sensors      = sensorsPage?.items ?? [];
-  const totalSensors = sensorsPage?.total ?? 0;
+  const sensors       = sensorsPage?.items ?? [];
+  const totalSensors  = sensorsPage?.total ?? 0;
   const activeSensors = sensors.filter((s) => s.status === "active").length;
   const errorSensors  = sensors.filter((s) => s.status === "error").length;
+
+  // Feature 4: billing overview calculations
+  const totalMessageCost = sensors.reduce((sum, s) => sum + s.message_count * COST_PER_MESSAGE, 0);
 
   if (meLoading) {
     return (
@@ -70,10 +79,8 @@ const Dashboard = () => {
             <p className="text-sm font-medium text-amber-800">Billing is not active</p>
             <p className="text-xs text-amber-600 mt-0.5">Top up your account to start onboarding sensors.</p>
           </div>
-          <Link
-            to="/billing/setup"
-            className="text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg transition-colors"
-          >
+          <Link to="/billing/setup"
+            className="text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg transition-colors">
             Setup Billing
           </Link>
         </div>
@@ -89,16 +96,14 @@ const Dashboard = () => {
             <p className="text-sm font-medium text-amber-800">No billing set up</p>
             <p className="text-xs text-amber-600 mt-0.5">You must activate billing before onboarding sensors.</p>
           </div>
-          <Link
-            to="/billing/setup"
-            className="text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg transition-colors"
-          >
+          <Link to="/billing/setup"
+            className="text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg transition-colors">
             Setup Billing
           </Link>
         </div>
       )}
 
-      {/* Stat cards */}
+      {/* ── Stat cards ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
           label="Total sensors"
@@ -121,17 +126,13 @@ const Dashboard = () => {
         <StatCard
           label="Billing status"
           value={billing ? billing.status : "—"}
-          sub={
-            billing
-              ? `Balance $${(billing.balance ?? 0).toFixed(2)}`
-              : "No billing set up"
-          }
+          sub={billing ? `Balance $${(billing.balance ?? 0).toFixed(2)}` : "No billing set up"}
           color={billing?.status === "active" ? "emerald" : "gray"}
           badge={billing ? BILLING_STATUS_STYLES[billing.status] : undefined}
         />
       </div>
 
-      {/* Sensors section */}
+      {/* ── Feature 4: Sensors section ── */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
           <h2 className="text-base font-semibold text-gray-800">Sensors</h2>
@@ -141,16 +142,12 @@ const Dashboard = () => {
                 {errorSensors} error{errorSensors > 1 ? "s" : ""}
               </span>
             )}
-            <Link
-              to="/sensors/list"
-              className="text-xs text-emerald-600 hover:text-emerald-700 font-medium transition-colors"
-            >
+            <Link to="/sensors/list"
+              className="text-xs text-emerald-600 hover:text-emerald-700 font-medium transition-colors">
               View all
             </Link>
-            <Link
-              to="/sensors/onboard"
-              className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
-            >
+            <Link to="/sensors/onboard"
+              className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors">
               <span className="text-base leading-none">+</span>
               <span>Add sensor</span>
             </Link>
@@ -162,10 +159,8 @@ const Dashboard = () => {
         ) : totalSensors === 0 ? (
           <div className="px-6 py-10 text-center">
             <p className="text-gray-400 text-sm">No sensors registered yet.</p>
-            <Link
-              to="/sensors/onboard"
-              className="mt-3 inline-block text-xs text-emerald-600 hover:text-emerald-700 font-medium"
-            >
+            <Link to="/sensors/onboard"
+              className="mt-3 inline-block text-xs text-emerald-600 hover:text-emerald-700 font-medium">
               + Onboard your first sensor
             </Link>
           </div>
@@ -197,11 +192,9 @@ const Dashboard = () => {
                       {s.message_count.toLocaleString()}
                     </td>
                     <td className="px-6 py-3">
-                      <span
-                        className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                          STATUS_STYLES[s.status] ?? "bg-gray-100 text-gray-500"
-                        }`}
-                      >
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                        STATUS_STYLES[s.status] ?? "bg-gray-100 text-gray-500"
+                      }`}>
                         {s.status}
                       </span>
                     </td>
@@ -214,16 +207,88 @@ const Dashboard = () => {
             </table>
             {totalSensors > 10 && (
               <div className="px-6 py-3 border-t border-gray-50 text-center">
-                <Link
-                  to="/sensors/list"
-                  className="text-xs text-emerald-600 hover:text-emerald-700 font-medium"
-                >
+                <Link to="/sensors/list"
+                  className="text-xs text-emerald-600 hover:text-emerald-700 font-medium">
                   View all {totalSensors} sensors →
                 </Link>
               </div>
             )}
           </div>
         )}
+      </div>
+
+      {/* ── Feature 4: Analytics section ── */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <h2 className="text-base font-semibold text-gray-800">Analytics</h2>
+          <Link to="/analytics"
+            className="text-xs text-emerald-600 hover:text-emerald-700 font-medium transition-colors">
+            Open analytics →
+          </Link>
+        </div>
+        <div className="px-6 py-10 text-center">
+          <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
+            <svg className="w-6 h-6 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+          </div>
+          <p className="text-sm text-gray-400">Sensor analytics and insights</p>
+          <p className="text-xs text-gray-300 mt-1">Trino + Iceberg integration coming soon</p>
+        </div>
+      </div>
+
+      {/* ── Feature 4: Billing Overview section ── */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <h2 className="text-base font-semibold text-gray-800">Billing Overview</h2>
+          <div className="flex items-center gap-3">
+            <Link to="/billing/budget"
+              className="text-xs text-gray-500 hover:text-gray-700 font-medium transition-colors">
+              Manage budgets
+            </Link>
+            <Link to="/billing/setup"
+              className="text-xs text-emerald-600 hover:text-emerald-700 font-medium transition-colors">
+              Top up →
+            </Link>
+          </div>
+        </div>
+        <div className="px-6 py-5">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-gray-50 rounded-xl p-4">
+              <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Balance</p>
+              <p className="text-xl font-bold text-gray-800">
+                ${billing ? (billing.balance ?? 0).toFixed(2) : "—"}
+              </p>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-4">
+              <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Current Cost</p>
+              <p className="text-xl font-bold text-purple-600">
+                ${totalMessageCost.toFixed(4)}
+              </p>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-4">
+              <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Total Messages</p>
+              <p className="text-xl font-bold text-blue-600">
+                {billing ? billing.message_count.toLocaleString() : "—"}
+              </p>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-4">
+              <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Active Sensors</p>
+              <p className="text-xl font-bold text-emerald-600">{activeSensors}</p>
+            </div>
+          </div>
+          <div className="mt-4 flex items-center gap-2">
+            <Link to="/billing/transactions"
+              className="text-xs text-emerald-600 hover:text-emerald-700 font-medium transition-colors">
+              View transactions →
+            </Link>
+            <span className="text-gray-200">·</span>
+            <span className="text-xs text-gray-400">
+              Rate: $0.00005/msg · {billing?.status === "active" ? "Billing active" : "Billing inactive"}
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -234,7 +299,7 @@ const Dashboard = () => {
 interface StatCardProps {
   label: string;
   value: string;
-  sub: string;
+  sub:   string;
   color: "emerald" | "blue" | "purple" | "gray";
   badge?: string;
 }

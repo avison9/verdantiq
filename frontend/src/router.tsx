@@ -15,6 +15,9 @@ import SensorConnections from "./pages/sensors/SensorConnections";
 import SensorConnectionDetail from "./pages/sensors/SensorConnectionDetail";
 import SetupBilling from "./pages/billing/SetupBilling";
 import Transactions from "./pages/billing/Transactions";
+import SensorBudget from "./pages/billing/SensorBudget";
+import Analytics from "./pages/analytics/Analytics";
+import Team from "./pages/team/Team";
 import Login from "./pages/authentication/Login";
 import Register from "./pages/authentication/Register";
 import ForgotPassword from "./pages/authentication/ForgotPassword";
@@ -54,6 +57,9 @@ export const router = createBrowserRouter([
           { path: "/sensors/:sensorId",               element: <SensorDetail /> },
           { path: "/billing/setup",         element: <SetupBilling /> },
           { path: "/billing/transactions",  element: <Transactions /> },
+          { path: "/billing/budget",        element: <SensorBudget /> },
+          { path: "/analytics",             element: <Analytics /> },
+          { path: "/team",                  element: <Team /> },
           { path: "/profile/user",          element: <UserProfile /> },
           { path: "/profile/tenant",        element: <TenantProfile /> },
         ],

@@ -278,9 +278,10 @@ const SensorList = () => {
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const { data: me } = useGetMeQuery();
+  // Bug 1: poll every 30 s so message_count updates from pipeline without terminal
   const { data, isLoading, isFetching } = useGetSensorsQuery(
     { tenant_id: me?.tenant_id ?? 0, page, per_page: perPage },
-    { skip: !me },
+    { skip: !me, pollingInterval: 30_000 },
   );
   const [renameSensor, { isLoading: isRenaming }] = useRenameSensorMutation();
   const [deleteSensor, { isLoading: isDeleting }] = useDeleteSensorMutation();

@@ -97,6 +97,53 @@ const EVENT_META: Record<string, { label: string; icon: React.ReactNode; color: 
   data_received:        { label: "First Data Received",     color: "bg-emerald-500", icon: checkSvg },
   data_streaming:       { label: "Data Streaming",          color: "bg-emerald-500", icon: checkSvg },
   warehouse_synced:     { label: "Warehouse Synced",        color: "bg-purple-500",  icon: checkSvg },
+  // Bug 4: terminal stream events
+  terminal_connected: {
+    label: "Terminal Stream Connected",
+    color: "bg-teal-500",
+    icon: (
+      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+      </svg>
+    ),
+  },
+  terminal_disconnected: {
+    label: "Terminal Stream Closed",
+    color: "bg-gray-400",
+    icon: (
+      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+      </svg>
+    ),
+  },
+  // Bug 5: network disconnect/reconnect events
+  sensor_disconnected: {
+    label: "Disconnected from Network",
+    color: "bg-red-500",
+    icon: (
+      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M18.364 5.636a9 9 0 010 12.728M15.536 8.464a5 5 0 010 7.072M6.343 6.343a9 9 0 000 12.728M9.172 9.172a5 5 0 000 7.07M12 12h.01" />
+      </svg>
+    ),
+  },
+  sensor_reconnected: {
+    label: "Reconnected to Network",
+    color: "bg-emerald-500",
+    icon: (
+      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.14 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
+      </svg>
+    ),
+  },
+  budget_exceeded: {
+    label: "Budget Limit Reached",
+    color: "bg-red-600",
+    icon: (
+      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+      </svg>
+    ),
+  },
 };
 
 const STATUS_BADGE: Record<string, string> = {
@@ -218,8 +265,9 @@ const SensorConnectionDetail = () => {
   const [perPage,        setPerPage]        = useState<(typeof PER_PAGE_OPTIONS)[number]>(20);
   const [pipelineStatus, setPipelineStatus] = useState<PipelineStatus | null>(null);
 
+  // Bug 1: poll sensor every 30 s so message_count updates from pipeline
   const { data: sensor, isLoading: sensorLoading } = useGetSensorQuery(sensorId ?? "", {
-    skip: !sensorId,
+    skip: !sensorId, pollingInterval: 30_000,
   });
 
   // Poll every 4 s so new pipeline events appear without a manual refresh

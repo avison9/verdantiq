@@ -2,10 +2,14 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import usePageTitle from "../../hooks/usePageTitle";
+import { useGetMeQuery } from "../../redux/apislices/authApiSlice";
 import {
   useGetBillingQuery,
+  useGetSensorsQuery,
   useTopUpBillingMutation,
 } from "../../redux/apislices/userDashboardApiSlice";
+
+const COST_PER_MESSAGE = 0.00005;
 
 // ── Payment method catalogue ─────────────────────────────────────────────────
 
@@ -373,8 +377,17 @@ function SecurityNote() {
 
 const SetupBilling = () => {
   usePageTitle("Setup Billing — VerdantIQ");
+  const { data: me }      = useGetMeQuery();
   const { data: billing } = useGetBillingQuery();
-  const balance = billing?.balance ?? 0;
+  // Feature 3: fetch sensors to compute current cost
+  const { data: sensorsPage } = useGetSensorsQuery(
+    { tenant_id: me?.tenant_id ?? 0, per_page: 100 },
+    { skip: !me, pollingInterval: 30_000 },
+  );
+  const balance    = billing?.balance ?? 0;
+  const totalCost  = (sensorsPage?.items ?? []).reduce(
+    (sum, s) => sum + s.message_count * COST_PER_MESSAGE, 0,
+  );
 
   const [selectedMethod, setSelectedMethod] = useState<MethodKey | null>(null);
 
@@ -403,18 +416,27 @@ const SetupBilling = () => {
       </div>
 
       <div className="max-w-lg space-y-6">
-        {/* Current balance card */}
+        {/* Feature 3: Balance + Current Cost cards */}
         {billing && (
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-4 flex items-center justify-between">
-            <div>
-              <p className="text-xs text-gray-400 uppercase tracking-wide">Current balance</p>
-              <p className="text-2xl font-bold text-gray-800 mt-0.5">${balance.toFixed(2)}</p>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-4 flex items-center justify-between">
+              <div>
+                <p className="text-xs text-gray-400 uppercase tracking-wide">Current balance</p>
+                <p className="text-2xl font-bold text-gray-800 mt-0.5">${balance.toFixed(2)}</p>
+              </div>
+              <span className={`text-xs font-semibold px-3 py-1 rounded-full capitalize ${
+                billing.status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500"
+              }`}>
+                {billing.status}
+              </span>
             </div>
-            <span className={`text-xs font-semibold px-3 py-1 rounded-full capitalize ${
-              billing.status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500"
-            }`}>
-              {billing.status}
-            </span>
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-4">
+              <p className="text-xs text-gray-400 uppercase tracking-wide">Current cost</p>
+              <p className="text-2xl font-bold text-purple-600 mt-0.5">${totalCost.toFixed(4)}</p>
+              <p className="text-xs text-gray-400 mt-1">
+                {(billing.message_count ?? 0).toLocaleString()} msgs × $0.00005
+              </p>
+            </div>
           </div>
         )}
 
