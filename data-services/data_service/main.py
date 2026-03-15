@@ -387,6 +387,64 @@ async def get_sensor_hardware(tenant_id: str, sensor_id: str):
     return {"tenant_id": tenant_id, "sensor_id": sensor_id, "hardware_info": hardware_info}
 
 
+# ── Message count — read Kafka watermarks (no WebSocket required) ─────────────
+
+
+def _get_topic_message_count(topic: str) -> int:
+    """Return total messages in a Kafka topic (sum of partition high-watermarks)."""
+    conf = {
+        "bootstrap.servers": KAFKA_BROKERS,
+        "group.id":          f"msgcount-{int(time.time())}",
+        "enable.auto.commit": False,
+    }
+    c = Consumer(conf)
+    try:
+        meta = c.list_topics(topic, timeout=5)
+        if topic not in meta.topics or meta.topics[topic].error:
+            return 0
+        total = 0
+        for pid in meta.topics[topic].partitions:
+            tp = TopicPartition(topic, pid)
+            _, hi = c.get_watermark_offsets(tp, timeout=5)
+            total += max(0, hi)
+        return total
+    except Exception:
+        return 0
+    finally:
+        c.close()
+
+
+@app.get("/sensors/message-counts")
+async def get_all_message_counts():
+    """
+    Return Kafka message counts for all active sensors.
+    Reads partition high-watermarks in parallel — no terminal/WebSocket needed.
+    """
+    if not _active:
+        return {"counts": {}}
+
+    def _read_one(key: str) -> tuple:
+        _, sensor_id = key.split(".", 1)
+        topic = f"verdantiq.{key}"
+        return sensor_id, _get_topic_message_count(topic)
+
+    loop    = asyncio.get_event_loop()
+    results = await asyncio.gather(
+        *[loop.run_in_executor(None, _read_one, k) for k in list(_active)]
+    )
+    return {"counts": dict(results)}
+
+
+@app.get("/sensors/{tenant_id}/{sensor_id}/message-count")
+async def get_sensor_message_count(tenant_id: str, sensor_id: str):
+    """Return the Kafka message count for a single sensor's topic."""
+    topic = f"verdantiq.{tenant_id}.{sensor_id}"
+    count = await asyncio.get_event_loop().run_in_executor(
+        None, _get_topic_message_count, topic
+    )
+    return {"tenant_id": tenant_id, "sensor_id": sensor_id, "message_count": count}
+
+
 # ── WebSocket — live Kafka consumer → terminal ────────────────────────────────
 
 @app.websocket("/ws/{tenant_id}/{sensor_id}")
