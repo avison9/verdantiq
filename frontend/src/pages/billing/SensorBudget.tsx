@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "react-toastify";
 import usePageTitle from "../../hooks/usePageTitle";
 import { useGetMeQuery } from "../../redux/apislices/authApiSlice";
@@ -10,11 +10,16 @@ import {
 } from "../../redux/apislices/userDashboardApiSlice";
 import { sensorIcon } from "../sensors/sensorUtils";
 
-const COST_PER_MESSAGE = 0.00005;
+const COST_PER_MESSAGE = 0.0005;
+const DATA_SERVICE_URL = import.meta.env.VITE_DATA_SERVICE_URL ?? "http://localhost:8090";
 
 // ── Budget editor row ─────────────────────────────────────────────────────────
 
-function BudgetRow({ sensor, onSaved }: { sensor: Sensor; onSaved: () => void }) {
+function BudgetRow({
+  sensor,
+  liveCount,
+  onSaved,
+}: { sensor: Sensor; liveCount: number | undefined; onSaved: () => void }) {
   const [updateSensor, { isLoading }] = useUpdateSensorMutation();
   const currentBudget = sensor.sensor_metadata?.budget != null
     ? String(sensor.sensor_metadata.budget)
@@ -22,7 +27,8 @@ function BudgetRow({ sensor, onSaved }: { sensor: Sensor; onSaved: () => void })
   const [editing,  setEditing]  = useState(false);
   const [value,    setValue]    = useState(currentBudget);
 
-  const runningCost = sensor.message_count * COST_PER_MESSAGE;
+  const msgCount    = liveCount ?? sensor.message_count;
+  const runningCost = msgCount * COST_PER_MESSAGE;
   const budgetNum   = currentBudget ? parseFloat(currentBudget) : null;
   const pct         = budgetNum && budgetNum > 0 ? (runningCost / budgetNum) * 100 : null;
 
@@ -48,6 +54,19 @@ function BudgetRow({ sensor, onSaved }: { sensor: Sensor; onSaved: () => void })
     }
   };
 
+  const handleClear = async () => {
+    try {
+      await updateSensor({
+        sensor_id:       sensor.sensor_id,
+        sensor_metadata: { ...(sensor.sensor_metadata ?? {}), budget: null },
+      }).unwrap();
+      toast.success("Budget cleared");
+      onSaved();
+    } catch {
+      toast.error("Failed to clear budget");
+    }
+  };
+
   const handleCancel = () => {
     setValue(currentBudget);
     setEditing(false);
@@ -64,11 +83,8 @@ function BudgetRow({ sensor, onSaved }: { sensor: Sensor; onSaved: () => void })
           </div>
         </div>
       </td>
-      <td className="px-6 py-4 text-sm text-gray-600 text-right">
-        {sensor.message_count.toLocaleString()}
-      </td>
       <td className="px-6 py-4 text-sm font-semibold text-purple-600 text-right">
-        ${runningCost.toFixed(5)}
+        ${runningCost.toFixed(4)}
       </td>
       <td className="px-6 py-4 text-right">
         {budgetNum !== null ? (
@@ -131,13 +147,22 @@ function BudgetRow({ sensor, onSaved }: { sensor: Sensor; onSaved: () => void })
             </button>
           </div>
         ) : (
-          <div className="flex justify-end">
+          <div className="flex items-center justify-end gap-2">
             <button
               onClick={() => setEditing(true)}
               className="text-xs text-emerald-600 hover:text-emerald-700 font-medium transition-colors"
             >
               {budgetNum !== null ? "Edit" : "Set budget"}
             </button>
+            {budgetNum !== null && (
+              <button
+                onClick={handleClear}
+                disabled={isLoading}
+                className="text-xs text-red-400 hover:text-red-600 font-medium transition-colors disabled:opacity-50"
+              >
+                Clear
+              </button>
+            )}
           </div>
         )}
       </td>
@@ -157,14 +182,32 @@ const SensorBudget = () => {
     { skip: !me },
   );
 
+  // Live message counts from Kafka watermarks
+  const [liveCounts, setLiveCounts] = useState<Record<string, number>>({});
+  useEffect(() => {
+    const fetchCounts = async () => {
+      try {
+        const r = await fetch(`${DATA_SERVICE_URL}/sensors/message-counts`, {
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!r.ok) return;
+        const body = await r.json() as { counts: Record<string, number> };
+        setLiveCounts(prev => ({ ...prev, ...(body.counts ?? {}) }));
+      } catch { /* ignore */ }
+    };
+    fetchCounts();
+    const id = setInterval(fetchCounts, 30_000);
+    return () => clearInterval(id);
+  }, []);
+
   const sensors = sensorsPage?.items ?? [];
 
-  const totalCost      = sensors.reduce((s, x) => s + x.message_count * COST_PER_MESSAGE, 0);
+  const totalCost      = sensors.reduce((s, x) => s + (liveCounts[x.sensor_id] ?? x.message_count) * COST_PER_MESSAGE, 0);
   const balance        = billing?.balance ?? 0;
   const sensorsOverBudget = sensors.filter(s => {
     const b = s.sensor_metadata?.budget;
     if (!b) return false;
-    return s.message_count * COST_PER_MESSAGE >= parseFloat(String(b));
+    return (liveCounts[s.sensor_id] ?? s.message_count) * COST_PER_MESSAGE >= parseFloat(String(b));
   });
 
   return (
@@ -202,7 +245,7 @@ const SensorBudget = () => {
       <div className="mb-6 bg-blue-50 border border-blue-200 rounded-xl px-5 py-4 text-sm text-blue-800 max-w-3xl">
         <p className="font-medium mb-1">How budgets work</p>
         <ul className="list-disc list-inside space-y-1 text-xs text-blue-700">
-          <li>Budget = max USD a sensor can spend (messages × $0.00005/msg)</li>
+          <li>Budget = max USD a sensor can spend (messages × $0.0005/msg)</li>
           <li>When running cost reaches the budget, the sensor is automatically deactivated</li>
           <li>Sensors without a budget are billed from the tenant account balance</li>
           <li>If tenant balance runs out, all budget-less sensors are disconnected</li>
@@ -221,7 +264,6 @@ const SensorBudget = () => {
               <thead>
                 <tr className="text-xs text-gray-400 uppercase tracking-wide border-b border-gray-100">
                   <th className="px-6 py-3 text-left">Sensor</th>
-                  <th className="px-6 py-3 text-right">Messages</th>
                   <th className="px-6 py-3 text-right">Running Cost</th>
                   <th className="px-6 py-3 text-right">Budget</th>
                   <th className="px-6 py-3 text-right">Actions</th>
@@ -229,7 +271,7 @@ const SensorBudget = () => {
               </thead>
               <tbody>
                 {sensors.map((s) => (
-                  <BudgetRow key={s.sensor_id} sensor={s} onSaved={refetch} />
+                  <BudgetRow key={s.sensor_id} sensor={s} liveCount={liveCounts[s.sensor_id]} onSaved={refetch} />
                 ))}
               </tbody>
             </table>

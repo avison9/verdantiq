@@ -11,7 +11,7 @@ import {
 import { STATUS_STYLES, sensorIcon } from "./sensorUtils";
 
 const DATA_SERVICE_URL  = import.meta.env.VITE_DATA_SERVICE_URL ?? "http://localhost:8090";
-const COST_PER_MESSAGE  = 0.00005;   // $0.00005 per message = $0.05 per 1 000 msgs
+const COST_PER_MESSAGE  = 0.0005;    // $0.0005 per message = $0.50 per 1 000 msgs
 const ONE_HOUR_MS       = 3_600_000; // hardware pipeline refresh cadence
 const MSG_POLL_MS       = 30_000;    // message count pipeline refresh cadence
 
@@ -243,9 +243,6 @@ const Nil = () => <span className="text-gray-300">—</span>;
 let _lineId = 0;
 const nextId = () => ++_lineId;
 
-// Persistent WebSocket registry — survives navigation
-const _liveStreams = new Map<string, WebSocket>();
-
 const SensorDetail = () => {
   const { sensorId } = useParams<{ sensorId: string }>();
   const navigate     = useNavigate();
@@ -294,63 +291,28 @@ const SensorDetail = () => {
     });
   }, []);
 
-  // ── open WebSocket only (pipeline already running) ──────────────────────
-  const openWebSocket = useCallback((quiet = false) => {
+  // ── open a fresh WebSocket and stream messages into the terminal ──────────
+  const openWebSocket = useCallback(() => {
     if (!sensor) return;
-    const key = `${sensor.tenant_id}.${sensor.sensor_id}`;
 
-    const attachHandlers = (ws: WebSocket) => {
-      // Terminal only — hardware updates come from pipeline poll, not WebSocket
-      ws.onmessage = (evt) => {
-        try {
-          const envelope   = JSON.parse(evt.data as string);
-          const pl         = envelope.payload ?? {};
-          const ts         = new Date(envelope.ts).toISOString().slice(11, 19);
-          const metricsKey = Object.keys(pl).find(k =>
-            ["soil_metrics", "air_quality", "weather_data",
-             "temperature_data", "pollution_metrics"].includes(k),
-          );
-          const metrics = metricsKey ? pl[metricsKey] : pl;
-          pushLine(`offset:${envelope.offset} ${JSON.stringify(metrics)}`, "data", ts);
-        } catch {
-          pushLine(evt.data as string, "data");
-        }
-      };
-
-      ws.onerror = () => {
-        setConnectState("error");
-        pushLine("WebSocket error — check data service", "error");
-      };
-
-      ws.onclose = (ev) => {
-        _liveStreams.delete(key);
-        wsRef.current = null;
-        setConnectState("idle");
-        pushLine(`Stream closed (code ${ev.code})`, "system");
-      };
-    };
-
-    const existing = _liveStreams.get(key);
-    if (existing && existing.readyState === WebSocket.OPEN) {
-      wsRef.current = existing;
-      setConnectState("streaming");
-      if (!quiet) pushLine("Reconnected to stream ✓", "system");
-      attachHandlers(existing);
-      return;
+    // Close any existing connection first
+    if (wsRef.current) {
+      wsRef.current.onopen    = null;
+      wsRef.current.onmessage = null;
+      wsRef.current.onerror   = null;
+      wsRef.current.onclose   = null;
+      wsRef.current.close();
+      wsRef.current = null;
     }
-
-    if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
 
     setConnectState("connecting");
     const wsUrl = `${DATA_SERVICE_URL.replace(/^http/, "ws")}/ws/${sensor.tenant_id}/${sensor.sensor_id}`;
     const ws    = new WebSocket(wsUrl);
     wsRef.current = ws;
-    _liveStreams.set(key, ws);
 
     ws.onopen = () => {
       setConnectState("streaming");
-      if (!quiet) pushLine("Stream connected ✓", "system");
-      // Bug 4: log terminal connection as event in trail
+      pushLine("Stream connected ✓", "system");
       logConnectionEvent({
         sensor_id:  sensor.sensor_id,
         event_type: "terminal_connected",
@@ -358,7 +320,33 @@ const SensorDetail = () => {
         message:    "Live terminal stream opened",
       });
     };
-    attachHandlers(ws);
+
+    ws.onmessage = (evt) => {
+      try {
+        const envelope   = JSON.parse(evt.data as string);
+        const pl         = envelope.payload ?? {};
+        const ts         = new Date(envelope.ts).toISOString().slice(11, 19);
+        const metricsKey = Object.keys(pl).find(k =>
+          ["soil_metrics", "air_quality", "weather_data",
+           "temperature_data", "pollution_metrics"].includes(k),
+        );
+        const metrics = metricsKey ? pl[metricsKey] : pl;
+        pushLine(`offset:${envelope.offset} ${JSON.stringify(metrics)}`, "data", ts);
+      } catch {
+        pushLine(evt.data as string, "data");
+      }
+    };
+
+    ws.onerror = () => {
+      setConnectState("error");
+      pushLine("WebSocket error — check data service", "error");
+    };
+
+    ws.onclose = (ev) => {
+      wsRef.current = null;
+      setConnectState("idle");
+      pushLine(`Stream closed (code ${ev.code})`, "system");
+    };
   }, [sensor, pushLine, logConnectionEvent]);
 
   const handleConnect = useCallback(async () => {
@@ -436,42 +424,41 @@ const SensorDetail = () => {
     }
   }, [sensor, pushLine, openWebSocket, updateSensor]);
 
-  // Bug 4: disconnect closes WebSocket view and logs the event
+  // Disconnect closes the WebSocket and clears the terminal
   const handleDisconnect = useCallback(() => {
     if (!sensor) return;
-    const key = `${sensor.tenant_id}.${sensor.sensor_id}`;
     if (wsRef.current) {
-      wsRef.current.onclose = null;
+      wsRef.current.onopen    = null;
+      wsRef.current.onmessage = null;
+      wsRef.current.onerror   = null;
+      wsRef.current.onclose   = null;
       wsRef.current.close();
       wsRef.current = null;
     }
-    _liveStreams.delete(key);
     setConnectState("idle");
-    pushLine("Stream view closed — pipeline is still running", "system");
-    // Bug 4: log terminal disconnect as trail event
+    setLines([]);
+    // Log terminal disconnect event in connection trail
     logConnectionEvent({
       sensor_id:  sensor.sensor_id,
       event_type: "terminal_disconnected",
       status:     "success",
       message:    "Live terminal stream closed (pipeline still active)",
     });
-  }, [sensor, pushLine, logConnectionEvent]);
+  }, [sensor, logConnectionEvent]);
 
-  // On unmount: detach wsRef but leave WS running
-  useEffect(() => { return () => { wsRef.current = null; }; }, []);
-
-  // On mount: if a stream is already open for this sensor, reattach silently
-  const openWebSocketRef = useRef(openWebSocket);
-  useEffect(() => { openWebSocketRef.current = openWebSocket; }, [openWebSocket]);
+  // Close WebSocket on unmount
   useEffect(() => {
-    if (!sensor) return;
-    const key = `${sensor.tenant_id}.${sensor.sensor_id}`;
-    const existing = _liveStreams.get(key);
-    if (existing && existing.readyState === WebSocket.OPEN) {
-      openWebSocketRef.current(true);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sensor?.sensor_id]);
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.onopen    = null;
+        wsRef.current.onmessage = null;
+        wsRef.current.onerror   = null;
+        wsRef.current.onclose   = null;
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+    };
+  }, []);
 
   // Poll data service every 5 s for Pipeline badge
   useEffect(() => {

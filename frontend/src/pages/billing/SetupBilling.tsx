@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import usePageTitle from "../../hooks/usePageTitle";
@@ -7,9 +7,12 @@ import {
   useGetBillingQuery,
   useGetSensorsQuery,
   useTopUpBillingMutation,
+  useUpdateBillingFrequencyMutation,
+  useProcessBillingCycleMutation,
 } from "../../redux/apislices/userDashboardApiSlice";
 
-const COST_PER_MESSAGE = 0.00005;
+const COST_PER_MESSAGE = 0.0005;
+const DATA_SERVICE_URL = import.meta.env.VITE_DATA_SERVICE_URL ?? "http://localhost:8090";
 
 // ── Payment method catalogue ─────────────────────────────────────────────────
 
@@ -377,17 +380,73 @@ function SecurityNote() {
 
 const SetupBilling = () => {
   usePageTitle("Setup Billing — VerdantIQ");
-  const { data: me }      = useGetMeQuery();
-  const { data: billing } = useGetBillingQuery();
-  // Feature 3: fetch sensors to compute current cost
-  const { data: sensorsPage } = useGetSensorsQuery(
+  const { data: me }                 = useGetMeQuery();
+  const { data: billing, refetch: refetchBilling } = useGetBillingQuery();
+  const { data: sensorsPage }        = useGetSensorsQuery(
     { tenant_id: me?.tenant_id ?? 0, per_page: 100 },
     { skip: !me, pollingInterval: 30_000 },
   );
+  const [updateFrequency, { isLoading: freqLoading }] = useUpdateBillingFrequencyMutation();
+  const [processCycle,    { isLoading: cycleLoading }] = useProcessBillingCycleMutation();
+
+  // Live message counts from Kafka watermarks
+  const [liveCounts, setLiveCounts] = useState<Record<string, number>>({});
+  useEffect(() => {
+    const fetchCounts = async () => {
+      try {
+        const r = await fetch(`${DATA_SERVICE_URL}/sensors/message-counts`, {
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!r.ok) return;
+        const body = await r.json() as { counts: Record<string, number> };
+        setLiveCounts(prev => ({ ...prev, ...(body.counts ?? {}) }));
+      } catch { /* ignore */ }
+    };
+    fetchCounts();
+    const id = setInterval(fetchCounts, 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const sensors    = sensorsPage?.items ?? [];
   const balance    = billing?.balance ?? 0;
-  const totalCost  = (sensorsPage?.items ?? []).reduce(
-    (sum, s) => sum + s.message_count * COST_PER_MESSAGE, 0,
+  const totalCost  = sensors.reduce(
+    (sum, s) => sum + (liveCounts[s.sensor_id] ?? s.message_count) * COST_PER_MESSAGE, 0,
   );
+  const totalMessages = sensors.reduce(
+    (sum, s) => sum + (liveCounts[s.sensor_id] ?? s.message_count), 0,
+  );
+
+  // Billing cycle
+  const [freqValue, setFreqValue] = useState<string>("");
+  useEffect(() => {
+    if (billing?.frequency) setFreqValue(billing.frequency);
+  }, [billing?.frequency]);
+
+  const cycleOverdue = billing?.due_date
+    ? new Date(billing.due_date) < new Date()
+    : false;
+
+  const handleFrequencyChange = async (freq: string) => {
+    setFreqValue(freq);
+    try {
+      await updateFrequency({ frequency: freq as "weekly" | "monthly" | "quarterly" | "yearly" }).unwrap();
+      toast.success(`Billing frequency updated to ${freq}`);
+    } catch {
+      toast.error("Failed to update billing frequency");
+    }
+  };
+
+  const handleProcessCycle = async () => {
+    const now = new Date();
+    const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    try {
+      await processCycle({ amount: totalCost, message_count: totalMessages, usage_period: period }).unwrap();
+      toast.success("Billing cycle processed — balance updated");
+      refetchBilling();
+    } catch {
+      toast.error("Failed to process billing cycle");
+    }
+  };
 
   const [selectedMethod, setSelectedMethod] = useState<MethodKey | null>(null);
 
@@ -416,28 +475,82 @@ const SetupBilling = () => {
       </div>
 
       <div className="max-w-lg space-y-6">
-        {/* Feature 3: Balance + Current Cost cards */}
+        {/* Balance + Running Cost + Billing Cycle */}
         {billing && (
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-4 flex items-center justify-between">
-              <div>
-                <p className="text-xs text-gray-400 uppercase tracking-wide">Current balance</p>
-                <p className="text-2xl font-bold text-gray-800 mt-0.5">${balance.toFixed(2)}</p>
+          <>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-gray-400 uppercase tracking-wide">Current balance</p>
+                  <p className="text-2xl font-bold text-gray-800 mt-0.5">${balance.toFixed(2)}</p>
+                </div>
+                <span className={`text-xs font-semibold px-3 py-1 rounded-full capitalize ${
+                  billing.status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500"
+                }`}>
+                  {billing.status}
+                </span>
               </div>
-              <span className={`text-xs font-semibold px-3 py-1 rounded-full capitalize ${
-                billing.status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500"
-              }`}>
-                {billing.status}
-              </span>
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-4">
+                <p className="text-xs text-gray-400 uppercase tracking-wide">Running cost</p>
+                <p className="text-2xl font-bold text-purple-600 mt-0.5">${totalCost.toFixed(4)}</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  {totalMessages.toLocaleString()} msgs × $0.0005
+                </p>
+              </div>
             </div>
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-4">
-              <p className="text-xs text-gray-400 uppercase tracking-wide">Current cost</p>
-              <p className="text-2xl font-bold text-purple-600 mt-0.5">${totalCost.toFixed(4)}</p>
-              <p className="text-xs text-gray-400 mt-1">
-                {(billing.message_count ?? 0).toLocaleString()} msgs × $0.00005
-              </p>
+
+            {/* Billing cycle section */}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-5">
+              <p className="text-sm font-semibold text-gray-800 mb-4">Billing Cycle</p>
+              <div className="flex items-center gap-4 mb-4">
+                <div className="flex-1">
+                  <label className={labelCls}>Billing frequency</label>
+                  <select
+                    value={freqValue}
+                    onChange={(e) => handleFrequencyChange(e.target.value)}
+                    disabled={freqLoading}
+                    className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white disabled:opacity-60"
+                  >
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                    <option value="quarterly">Quarterly</option>
+                    <option value="yearly">Yearly</option>
+                  </select>
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs text-gray-400 uppercase tracking-wide mb-1.5">Next billing date</p>
+                  <p className={`text-sm font-semibold ${cycleOverdue ? "text-red-600" : "text-gray-700"}`}>
+                    {billing.due_date
+                      ? new Date(billing.due_date).toLocaleDateString(undefined, { dateStyle: "medium" })
+                      : "—"}
+                    {cycleOverdue && <span className="ml-2 text-xs font-normal text-red-500">(overdue)</span>}
+                  </p>
+                </div>
+              </div>
+              {cycleOverdue && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-amber-800">Billing cycle overdue</p>
+                    <p className="text-xs text-amber-600 mt-0.5">
+                      Running cost of ${totalCost.toFixed(4)} will be deducted from your balance.
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleProcessCycle}
+                    disabled={cycleLoading}
+                    className="text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60 shrink-0 ml-4"
+                  >
+                    {cycleLoading ? "Processing…" : "Process cycle"}
+                  </button>
+                </div>
+              )}
+              {!cycleOverdue && billing.due_date && (
+                <p className="text-xs text-gray-400">
+                  Running cost will be automatically deducted on the next billing date.
+                </p>
+              )}
             </div>
-          </div>
+          </>
         )}
 
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8">

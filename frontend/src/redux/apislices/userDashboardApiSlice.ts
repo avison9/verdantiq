@@ -117,6 +117,16 @@ export interface BillingTopUp {
   reference?: string;
 }
 
+export interface BillingFrequencyUpdate {
+  frequency: "weekly" | "monthly" | "quarterly" | "yearly";
+}
+
+export interface BillingProcessCycle {
+  amount: number;
+  message_count: number;
+  usage_period?: string;
+}
+
 export interface Transaction {
   id: number;
   billing_id: number;
@@ -241,6 +251,22 @@ export const userDashboardApiSlice = baseApiSlice.injectEndpoints({
         `${APIendPoints.billingTransactions}/?page=${page}&per_page=${per_page}`,
       providesTags: ["Transaction"],
     }),
+    updateBillingFrequency: builder.mutation<Billing, BillingFrequencyUpdate>({
+      query: (body) => ({
+        url: `${APIendPoints.billingFrequency}`,
+        method: "PATCH",
+        body,
+      }),
+      invalidatesTags: ["Billing"],
+    }),
+    processBillingCycle: builder.mutation<Billing, BillingProcessCycle>({
+      query: (body) => ({
+        url: `${APIendPoints.billingProcessCycle}`,
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["Billing", "Transaction"],
+    }),
   }),
 });
 
@@ -259,4 +285,6 @@ export const {
   useGetSensorConnectionEventsQuery,
   useTopUpBillingMutation,
   useGetTransactionsQuery,
+  useUpdateBillingFrequencyMutation,
+  useProcessBillingCycleMutation,
 } = userDashboardApiSlice;
