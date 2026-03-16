@@ -25,6 +25,7 @@ class SessionStatus(str, enum.Enum):
 
 
 class BillingFrequency(str, enum.Enum):
+    WEEKLY = "weekly"
     MONTHLY = "monthly"
     QUARTERLY = "quarterly"
     YEARLY = "yearly"

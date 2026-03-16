@@ -151,6 +151,32 @@ async def topup_billing(
     return crud.topup_billing(db, current_user.tenant_id, topup)
 
 
+@app.patch("/billings/frequency", response_model=schemas.BillingResponse)
+async def update_billing_frequency(
+    body: schemas.BillingFrequencyUpdate,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    billing = crud.update_billing_frequency(db, current_user.tenant_id, body.frequency)
+    if not billing:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No billing record found")
+    return billing
+
+
+@app.post("/billings/process-cycle", response_model=schemas.BillingResponse)
+async def process_billing_cycle(
+    body: schemas.BillingProcessCycleRequest,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if body.amount < 0:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Amount must be non-negative")
+    try:
+        return crud.process_billing_cycle(db, current_user.tenant_id, body)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+
+
 @app.get("/billings/transactions/", response_model=schemas.TransactionPage)
 async def get_transactions(
     page: int = Query(default=1, ge=1),
