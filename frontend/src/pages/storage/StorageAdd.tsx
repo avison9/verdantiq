@@ -9,7 +9,6 @@ import {
   useCreateSensorStorageMutation,
 } from "../../redux/apislices/userDashboardApiSlice";
 import { useBillingRates } from "../../hooks/useBillingRates";
-import { sensorIcon } from "../sensors/sensorUtils";
 
 const StorageAdd = () => {
   usePageTitle("Add Storage — VerdantIQ");

@@ -18,7 +18,7 @@ const AnalyticsOverview = () => {
   );
   const { data: storageList } = useGetSensorStorageListQuery();
   const [liveCounts, setLiveCounts] = useState<Record<string, number>>({});
-  const { message_rate, storage_rate } = useBillingRates();
+  const { storage_rate } = useBillingRates();
 
   useEffect(() => {
     const fetchCounts = () => {
@@ -41,8 +41,6 @@ const AnalyticsOverview = () => {
   }, 0);
   const totalVolumeGB = totalBytes / (1024 ** 3);
   const totalVolumeMB = totalBytes / (1024 ** 2);
-
-  const totalAllocatedGB = storageItems.reduce((s, x) => s + x.allocated_gb, 0);
 
   const activeSensors = sensors.filter(s => s.status === "active").length;
   const sensorTypes = new Set(sensors.map(s => s.sensor_type)).size;
