@@ -3,10 +3,9 @@ import { Link } from "react-router-dom";
 import usePageTitle from "../hooks/usePageTitle";
 import { useGetMeQuery } from "../redux/apislices/authApiSlice";
 import { useGetSensorsQuery, useGetBillingQuery } from "../redux/apislices/userDashboardApiSlice";
+import { useBillingRates } from "../hooks/useBillingRates";
 
 const DATA_SERVICE_URL = import.meta.env.VITE_DATA_SERVICE_URL ?? "http://localhost:8090";
-
-const COST_PER_MESSAGE = 0.00005;
 
 const STATUS_STYLES: Record<string, string> = {
   active:      "bg-emerald-100 text-emerald-700",
@@ -35,6 +34,7 @@ function sensorIcon(type: string) {
 
 const Dashboard = () => {
   usePageTitle("Dashboard — VerdantIQ");
+  const { message_rate } = useBillingRates();
 
   const { data: me, isLoading: meLoading } = useGetMeQuery();
   // Bug 1: poll every 30 s so message counts update from pipeline
@@ -70,10 +70,11 @@ const Dashboard = () => {
   const activeSensors = sensors.filter((s) => s.status === "active").length;
   const errorSensors  = sensors.filter((s) => s.status === "error").length;
 
-  // Billing cost uses live Kafka counts where available, falls back to DB value
-  const totalMessageCost = sensors.reduce(
-    (sum, s) => sum + (liveCounts[s.sensor_id] ?? s.message_count) * COST_PER_MESSAGE, 0,
-  );
+  // Total messages: prefer live Kafka counts, fallback to sum of DB values
+  const totalMessages = Object.keys(liveCounts).length > 0
+    ? Object.values(liveCounts).reduce((s, c) => s + c, 0)
+    : sensors.reduce((s, x) => s + x.message_count, 0);
+
 
   if (meLoading) {
     return (
@@ -142,7 +143,7 @@ const Dashboard = () => {
         />
         <StatCard
           label="Messages processed"
-          value={billing ? billing.message_count.toLocaleString() : "—"}
+          value={sensorsLoading ? "…" : totalMessages.toLocaleString()}
           sub="total IoT messages"
           color="purple"
         />
@@ -277,7 +278,7 @@ const Dashboard = () => {
           </div>
         </div>
         <div className="px-6 py-5">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div className="bg-gray-50 rounded-xl p-4">
               <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Balance</p>
               <p className="text-xl font-bold text-gray-800">
@@ -285,15 +286,9 @@ const Dashboard = () => {
               </p>
             </div>
             <div className="bg-gray-50 rounded-xl p-4">
-              <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Current Cost</p>
+              <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Messages Processed</p>
               <p className="text-xl font-bold text-purple-600">
-                ${totalMessageCost.toFixed(4)}
-              </p>
-            </div>
-            <div className="bg-gray-50 rounded-xl p-4">
-              <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Total Messages</p>
-              <p className="text-xl font-bold text-blue-600">
-                {billing ? billing.message_count.toLocaleString() : "—"}
+                {totalMessages.toLocaleString()}
               </p>
             </div>
             <div className="bg-gray-50 rounded-xl p-4">
@@ -308,7 +303,7 @@ const Dashboard = () => {
             </Link>
             <span className="text-gray-200">·</span>
             <span className="text-xs text-gray-400">
-              Rate: $0.00005/msg · {billing?.status === "active" ? "Billing active" : "Billing inactive"}
+              Rate: ${message_rate}/msg · {billing?.status === "active" ? "Billing active" : "Billing inactive"}
             </span>
           </div>
         </div>

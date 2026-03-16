@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Any, Optional, List
 from datetime import datetime
 from models import SensorStatus
@@ -129,3 +129,28 @@ class ConnectionEventCreate(BaseModel):
     status: str = "success"
     message: Optional[str] = None
     details: Optional[dict] = None
+
+
+class SensorStorageCreate(BaseModel):
+    sensor_id: Optional[str] = None
+    allocated_gb: float
+
+
+class SensorStorageResponse(BaseModel):
+    storage_id: str
+    tenant_id: int
+    sensor_id: Optional[str] = None
+    allocated_gb: float
+    used_bytes: int
+    status: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SensorStoragePage(BaseModel):
+    items: List[SensorStorageResponse]
+    total: int
+    page: int
+    per_page: int
+    pages: int

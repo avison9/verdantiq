@@ -5,7 +5,7 @@ import { toast } from "react-toastify";
 import { useGetMeQuery, useLogoutMutation } from "../redux/apislices/authApiSlice";
 import { logout as logoutAction } from "../redux/slices/authSlice";
 
-type MenuSection = "sensors" | "billing" | "analytics" | "team";
+type MenuSection = "sensors" | "billing" | "analytics" | "storage" | "team";
 
 function greeting() {
   const h = new Date().getHours();
@@ -189,26 +189,43 @@ const DashboardLayout = () => {
             )}
           </div>
 
-          {/* ── Analytics (Feature 5) ── */}
-          <NavLink
-            to="/analytics"
-            className={({ isActive }) =>
-              `flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                collapsed ? "justify-center" : ""
-              } ${
-                isActive
-                  ? "bg-emerald-50 text-emerald-700"
-                  : "text-gray-600 hover:bg-gray-100 hover:text-gray-800"
-              }`
-            }
-            title={collapsed ? "Analytics" : undefined}
-          >
-            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
-            {!collapsed && <span>Analytics</span>}
-          </NavLink>
+          {/* ── Analytics group ── */}
+          <div>
+            <button
+              onClick={() => !collapsed && toggleSection("analytics")}
+              className={`${groupBtnCls} ${collapsed ? "justify-center" : "justify-between"}`}
+              title={collapsed ? "Analytics" : undefined}
+            >
+              <span className="flex items-center gap-2">
+                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                {!collapsed && <span>Analytics</span>}
+              </span>
+              {!collapsed && (
+                <svg
+                  className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-200 ${
+                    openSections.has("analytics") ? "rotate-180" : ""
+                  }`}
+                  fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              )}
+            </button>
+            {!collapsed && openSections.has("analytics") && (
+              <div className="mt-0.5 ml-3 pl-3 border-l border-gray-100 space-y-0.5">
+                <NavLink to="/analytics/overview" className={subLinkCls}>
+                  <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                  </svg>
+                  Overview
+                </NavLink>
+              </div>
+            )}
+          </div>
 
           {/* ── Team (Feature 5) ── */}
           <NavLink
@@ -284,25 +301,62 @@ const DashboardLayout = () => {
             )}
           </div>
 
-          {/* ── Other Services (coming soon) ── */}
-          <button
-            disabled
-            className={`${groupBtnCls} text-gray-400 cursor-not-allowed ${collapsed ? "justify-center" : ""}`}
-            title={collapsed ? "Other Services — coming soon" : undefined}
-          >
-            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-            </svg>
-            {!collapsed && (
+          {/* ── Storage group ── */}
+          <div>
+            <button
+              onClick={() => !collapsed && toggleSection("storage")}
+              className={`${groupBtnCls} ${collapsed ? "justify-center" : "justify-between"}`}
+              title={collapsed ? "Storage" : undefined}
+            >
               <span className="flex items-center gap-2">
-                Other Services
-                <span className="text-[10px] bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded-full leading-none">
-                  soon
-                </span>
+                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
+                </svg>
+                {!collapsed && <span>Storage</span>}
               </span>
+              {!collapsed && (
+                <svg
+                  className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-200 ${
+                    openSections.has("storage") ? "rotate-180" : ""
+                  }`}
+                  fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              )}
+            </button>
+            {!collapsed && openSections.has("storage") && (
+              <div className="mt-0.5 ml-3 pl-3 border-l border-gray-100 space-y-0.5">
+                <NavLink to="/storage/add" className={subLinkCls}>
+                  <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Add Storage
+                </NavLink>
+                <NavLink to="/storage/list" className={subLinkCls}>
+                  <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                  </svg>
+                  List Storage
+                </NavLink>
+                <NavLink to="/storage/connections" className={subLinkCls}>
+                  <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M5 12h14M12 5l7 7-7 7" />
+                  </svg>
+                  Connections
+                </NavLink>
+                <NavLink to="/storage/query" className={subLinkCls}>
+                  <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                  </svg>
+                  Query
+                </NavLink>
+              </div>
             )}
-          </button>
+          </div>
 
           {/* ── API (coming soon) ── */}
           <button

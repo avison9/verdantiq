@@ -151,6 +151,64 @@ async def topup_billing(
     return crud.topup_billing(db, current_user.tenant_id, topup)
 
 
+@app.patch("/billings/frequency", response_model=schemas.BillingResponse)
+async def update_billing_frequency(
+    body: schemas.BillingFrequencyUpdate,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    billing = crud.update_billing_frequency(db, current_user.tenant_id, body.frequency)
+    if not billing:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No billing record found")
+    return billing
+
+
+@app.post("/billings/process-cycle", response_model=schemas.BillingResponse)
+async def process_billing_cycle(
+    body: schemas.BillingProcessCycleRequest,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if body.amount < 0:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Amount must be non-negative")
+    try:
+        return crud.process_billing_cycle(db, current_user.tenant_id, body)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+
+
+@app.post("/billings/suspend", response_model=schemas.BillingResponse)
+async def suspend_billing(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Suspend billing when running cost exceeds balance. Called by frontend balance-check."""
+    billing = crud.get_billing_by_tenant(db, current_user.tenant_id)
+    if not billing:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No billing record found")
+    billing.status = models.BillingStatus.SUSPENDED
+    db.commit()
+    db.refresh(billing)
+    return billing
+
+
+@app.get("/billing-rates/", response_model=schemas.BillingRateResponse)
+async def get_billing_rates(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return crud.get_billing_rate(db)
+
+
+@app.patch("/billing-rates/", response_model=schemas.BillingRateResponse)
+async def update_billing_rates(
+    body: schemas.BillingRateUpdate,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return crud.update_billing_rate(db, body)
+
+
 @app.get("/billings/transactions/", response_model=schemas.TransactionPage)
 async def get_transactions(
     page: int = Query(default=1, ge=1),

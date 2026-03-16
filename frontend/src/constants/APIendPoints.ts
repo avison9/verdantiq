@@ -16,4 +16,10 @@ export const APIendPoints = {
   billings: "billings",
   billingTopup: "billings/topup",
   billingTransactions: "billings/transactions",
+  billingFrequency: "billings/frequency",
+  billingProcessCycle: "billings/process-cycle",
+  billingSuspend: "billings/suspend",
+  billingRates: "billing-rates",
+  // Storage
+  storage: "storage",
 };

@@ -20,7 +20,9 @@ def calculate_amount_due(message_count: int, sensor_count: int, ml_features: lis
 
 
 def calculate_next_due_date(frequency: models.BillingFrequency, last_date: datetime) -> datetime:
-    if frequency == models.BillingFrequency.MONTHLY:
+    if frequency == models.BillingFrequency.WEEKLY:
+        return last_date + relativedelta(weeks=1)
+    elif frequency == models.BillingFrequency.MONTHLY:
         return last_date + relativedelta(months=1)
     elif frequency == models.BillingFrequency.QUARTERLY:
         return last_date + relativedelta(months=3)
@@ -179,3 +181,73 @@ def get_transactions(
         per_page=per_page,
         pages=max(1, math.ceil(total / per_page)),
     )
+
+
+def update_billing_frequency(
+    db: Session, tenant_id: int, frequency: models.BillingFrequency
+) -> models.Billing | None:
+    billing = get_billing_by_tenant(db, tenant_id)
+    if not billing:
+        return None
+    billing.frequency = frequency
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    billing.due_date = calculate_next_due_date(frequency, now)
+    db.commit()
+    db.refresh(billing)
+    return billing
+
+
+def process_billing_cycle(
+    db: Session,
+    tenant_id: int,
+    req: schemas.BillingProcessCycleRequest,
+) -> models.Billing:
+    billing = get_billing_by_tenant(db, tenant_id)
+    if not billing:
+        raise ValueError("No billing record found")
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    deduct = min(req.amount, billing.balance or 0.0)
+    billing.balance = (billing.balance or 0.0) - deduct
+    billing.message_count = 0
+    billing.amount_due = 0.0
+    billing.last_payment_date = now
+    billing.due_date = calculate_next_due_date(billing.frequency, now)
+    if billing.balance <= 0:
+        billing.status = models.BillingStatus.SUSPENDED
+    tx = models.Transaction(
+        billing_id=billing.id,
+        type=models.TransactionType.DEBIT,
+        amount=deduct,
+        balance_after=billing.balance,
+        description=f"Billing cycle charge — {req.message_count:,} messages",
+        usage_period=req.usage_period or now.strftime("%Y-%m"),
+        data_points=req.message_count,
+        reference=f"CYCLE-{uuid.uuid4().hex[:8].upper()}",
+    )
+    db.add(tx)
+    db.commit()
+    db.refresh(billing)
+    return billing
+
+
+def get_billing_rate(db: Session) -> models.BillingRate:
+    rate = db.query(models.BillingRate).first()
+    if not rate:
+        rate = models.BillingRate()
+        db.add(rate)
+        db.commit()
+        db.refresh(rate)
+    return rate
+
+
+def update_billing_rate(db: Session, updates: schemas.BillingRateUpdate) -> models.BillingRate:
+    rate = get_billing_rate(db)
+    if updates.message_rate is not None:
+        rate.message_rate = updates.message_rate
+    if updates.storage_rate is not None:
+        rate.storage_rate = updates.storage_rate
+    if updates.query_rate is not None:
+        rate.query_rate = updates.query_rate
+    db.commit()
+    db.refresh(rate)
+    return rate

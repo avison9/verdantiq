@@ -5,6 +5,7 @@ from enum import Enum
 
 
 class BillingFrequency(str, Enum):
+    weekly = "weekly"
     monthly = "monthly"
     quarterly = "quarterly"
     yearly = "yearly"
@@ -56,6 +57,32 @@ class BillingTopUpRequest(BaseModel):
     payer_email: Optional[str] = None
     # Wire transfer
     reference: Optional[str] = None
+
+
+class BillingFrequencyUpdate(BaseModel):
+    frequency: BillingFrequency
+
+
+class BillingProcessCycleRequest(BaseModel):
+    amount: float
+    message_count: int
+    usage_period: Optional[str] = None
+
+
+class BillingRateResponse(BaseModel):
+    id: int
+    message_rate: float
+    storage_rate: float
+    query_rate: float
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class BillingRateUpdate(BaseModel):
+    message_rate: Optional[float] = None
+    storage_rate: Optional[float] = None
+    query_rate: Optional[float] = None
 
 
 class TransactionType(str, Enum):

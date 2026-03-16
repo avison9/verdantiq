@@ -114,7 +114,7 @@ function StepRow({ label, status }: { label: string; status: StepStatus }) {
 
 // ── Pagination ────────────────────────────────────────────────────────────────
 
-const PER_PAGE_OPTIONS = [5, 10, 20] as const;
+const PER_PAGE_OPTIONS = [10, 20] as const;
 
 function buildPageRange(current: number, total: number): (number | "...")[] {
   if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
@@ -382,7 +382,8 @@ const SensorConnections = () => {
       ) : sensors.length === 0 ? (
         <div className="text-sm text-gray-400 py-12 text-center">No sensors registered yet.</div>
       ) : (
-        <div className={`space-y-4 max-w-3xl transition-opacity ${isFetching ? "opacity-60" : ""}`}>
+        <>
+        <div className={`grid grid-cols-1 lg:grid-cols-2 gap-4 transition-opacity ${isFetching ? "opacity-60" : ""}`}>
           {sensors.map((s) => {
             const messageTopic  = `verdantiq.sensors.${me?.tenant_id}.${s.sensor_id}`;
             const isDisconn     = disconnectingId === s.sensor_id;
@@ -546,39 +547,41 @@ const SensorConnections = () => {
             );
           })}
 
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="pt-4 flex items-center justify-between gap-4 flex-wrap">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <button disabled={page === 1} onClick={() => setPage(p => p - 1)}
-                  className="w-5 h-5 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-xs">‹</button>
-
-                {pageRange.map((p, idx) =>
-                  p === "..." ? (
-                    <span key={`e-${idx}`} className="w-5 h-5 flex items-center justify-center text-gray-400 text-xs">…</span>
-                  ) : (
-                    <button key={p} onClick={() => setPage(p)}
-                      className={`w-5 h-5 flex items-center justify-center rounded-full text-xs font-medium transition-colors ${
-                        p === page ? "bg-emerald-600 text-white" : "text-gray-500 hover:bg-gray-100"
-                      }`}>{p}</button>
-                  )
-                )}
-
-                <button disabled={page === totalPages} onClick={() => setPage(p => p + 1)}
-                  className="w-5 h-5 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-xs">›</button>
-              </div>
-
-              <div className="flex items-center gap-2 text-xs text-gray-400">
-                <span>Per page</span>
-                <select value={perPage}
-                  onChange={(e) => { setPerPage(Number(e.target.value) as typeof perPage); setPage(1); }}
-                  className="border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-600 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white">
-                  {PER_PAGE_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
-                </select>
-              </div>
-            </div>
-          )}
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="pt-4 flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button disabled={page === 1} onClick={() => setPage(p => p - 1)}
+                className="w-5 h-5 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-xs">‹</button>
+
+              {pageRange.map((p, idx) =>
+                p === "..." ? (
+                  <span key={`e-${idx}`} className="w-5 h-5 flex items-center justify-center text-gray-400 text-xs">…</span>
+                ) : (
+                  <button key={p} onClick={() => setPage(p)}
+                    className={`w-5 h-5 flex items-center justify-center rounded-full text-xs font-medium transition-colors ${
+                      p === page ? "bg-emerald-600 text-white" : "text-gray-500 hover:bg-gray-100"
+                    }`}>{p}</button>
+                )
+              )}
+
+              <button disabled={page === totalPages} onClick={() => setPage(p => p + 1)}
+                className="w-5 h-5 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-xs">›</button>
+            </div>
+
+            <div className="flex items-center gap-2 text-xs text-gray-400">
+              <span>Per page</span>
+              <select value={perPage}
+                onChange={(e) => { setPerPage(Number(e.target.value) as typeof perPage); setPage(1); }}
+                className="border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-600 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white">
+                {PER_PAGE_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+          </div>
+        )}
+        </>
       )}
     </div>
   );

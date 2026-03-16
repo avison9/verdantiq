@@ -1,4 +1,4 @@
-import { createBrowserRouter } from "react-router-dom";
+import { createBrowserRouter, Navigate } from "react-router-dom";
 import MarketingLayout from "./components/MarketingLayout";
 import DashboardLayout from "./components/DashboardLayout";
 import LandingPage from "./pages/LandingPage";
@@ -16,8 +16,12 @@ import SensorConnectionDetail from "./pages/sensors/SensorConnectionDetail";
 import SetupBilling from "./pages/billing/SetupBilling";
 import Transactions from "./pages/billing/Transactions";
 import SensorBudget from "./pages/billing/SensorBudget";
-import Analytics from "./pages/analytics/Analytics";
+import AnalyticsOverview from "./pages/analytics/AnalyticsOverview";
 import Team from "./pages/team/Team";
+import StorageAdd from "./pages/storage/StorageAdd";
+import StorageList from "./pages/storage/StorageList";
+import StorageConnections from "./pages/storage/StorageConnections";
+import StorageQuery from "./pages/storage/StorageQuery";
 import Login from "./pages/authentication/Login";
 import Register from "./pages/authentication/Register";
 import ForgotPassword from "./pages/authentication/ForgotPassword";
@@ -48,20 +52,27 @@ export const router = createBrowserRouter([
       {
         element: <DashboardLayout />,
         children: [
-          { path: "/dashboard",             element: <Dashboard /> },
-          { path: "/sensors/onboard",       element: <OnboardSensor /> },
-          { path: "/sensors/list",          element: <SensorList /> },
-          { path: "/sensors/connections",              element: <SensorConnections /> },
-          { path: "/sensors/audit",                   element: <SensorAudit /> },
-          { path: "/sensors/:sensorId/connection",    element: <SensorConnectionDetail /> },
-          { path: "/sensors/:sensorId",               element: <SensorDetail /> },
-          { path: "/billing/setup",         element: <SetupBilling /> },
-          { path: "/billing/transactions",  element: <Transactions /> },
-          { path: "/billing/budget",        element: <SensorBudget /> },
-          { path: "/analytics",             element: <Analytics /> },
-          { path: "/team",                  element: <Team /> },
-          { path: "/profile/user",          element: <UserProfile /> },
-          { path: "/profile/tenant",        element: <TenantProfile /> },
+          { path: "/dashboard",                            element: <Dashboard /> },
+          { path: "/sensors/onboard",                      element: <OnboardSensor /> },
+          { path: "/sensors/list",                         element: <SensorList /> },
+          { path: "/sensors/connections",                  element: <SensorConnections /> },
+          { path: "/sensors/audit",                        element: <SensorAudit /> },
+          { path: "/sensors/:sensorId/connection",         element: <SensorConnectionDetail /> },
+          { path: "/sensors/:sensorId",                    element: <SensorDetail /> },
+          { path: "/billing/setup",                        element: <SetupBilling /> },
+          { path: "/billing/transactions",                 element: <Transactions /> },
+          { path: "/billing/budget",                       element: <SensorBudget /> },
+          // Analytics sub-pages
+          { path: "/analytics",                            element: <Navigate to="/analytics/overview" replace /> },
+          { path: "/analytics/overview",                   element: <AnalyticsOverview /> },
+          // Storage sub-pages
+          { path: "/storage/add",                          element: <StorageAdd /> },
+          { path: "/storage/list",                         element: <StorageList /> },
+          { path: "/storage/connections",                  element: <StorageConnections /> },
+          { path: "/storage/query",                        element: <StorageQuery /> },
+          { path: "/team",                                 element: <Team /> },
+          { path: "/profile/user",                         element: <UserProfile /> },
+          { path: "/profile/tenant",                       element: <TenantProfile /> },
         ],
       },
     ],

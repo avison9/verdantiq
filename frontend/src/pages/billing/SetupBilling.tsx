@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import usePageTitle from "../../hooks/usePageTitle";
@@ -7,9 +7,13 @@ import {
   useGetBillingQuery,
   useGetSensorsQuery,
   useTopUpBillingMutation,
+  useUpdateBillingFrequencyMutation,
+  useProcessBillingCycleMutation,
+  useSuspendBillingMutation,
 } from "../../redux/apislices/userDashboardApiSlice";
+import { useBillingRates } from "../../hooks/useBillingRates";
 
-const COST_PER_MESSAGE = 0.00005;
+const DATA_SERVICE_URL = import.meta.env.VITE_DATA_SERVICE_URL ?? "http://localhost:8090";
 
 // ── Payment method catalogue ─────────────────────────────────────────────────
 
@@ -377,17 +381,107 @@ function SecurityNote() {
 
 const SetupBilling = () => {
   usePageTitle("Setup Billing — VerdantIQ");
-  const { data: me }      = useGetMeQuery();
-  const { data: billing } = useGetBillingQuery();
-  // Feature 3: fetch sensors to compute current cost
-  const { data: sensorsPage } = useGetSensorsQuery(
+  const { message_rate } = useBillingRates();
+  const { data: me }                 = useGetMeQuery();
+  const { data: billing, refetch: refetchBilling } = useGetBillingQuery();
+  const { data: sensorsPage }        = useGetSensorsQuery(
     { tenant_id: me?.tenant_id ?? 0, per_page: 100 },
     { skip: !me, pollingInterval: 30_000 },
   );
+  const [updateFrequency, { isLoading: freqLoading }] = useUpdateBillingFrequencyMutation();
+  const [processCycle,    { isLoading: cycleLoading }] = useProcessBillingCycleMutation();
+  const [suspendBilling]  = useSuspendBillingMutation();
+
+  // Live message counts from Kafka watermarks
+  const [liveCounts, setLiveCounts] = useState<Record<string, number>>({});
+  useEffect(() => {
+    const fetchCounts = async () => {
+      try {
+        const r = await fetch(`${DATA_SERVICE_URL}/sensors/message-counts`, {
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!r.ok) return;
+        const body = await r.json() as { counts: Record<string, number> };
+        setLiveCounts(prev => ({ ...prev, ...(body.counts ?? {}) }));
+      } catch { /* ignore */ }
+    };
+    fetchCounts();
+    const id = setInterval(fetchCounts, 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const sensors    = sensorsPage?.items ?? [];
   const balance    = billing?.balance ?? 0;
-  const totalCost  = (sensorsPage?.items ?? []).reduce(
-    (sum, s) => sum + s.message_count * COST_PER_MESSAGE, 0,
+
+  // Sensors without a budget — their costs draw from the tenant balance
+  const unbudgetedSensors = sensors.filter(s => s.sensor_metadata?.budget == null);
+  const budgetedSensors   = sensors.filter(s => s.sensor_metadata?.budget != null);
+
+  // Running cost of unbudgeted sensors only (these draw from the shared balance)
+  const unbudgetedCost = unbudgetedSensors.reduce(
+    (sum, s) => sum + (liveCounts[s.sensor_id] ?? s.message_count) * message_rate, 0,
   );
+  // Total running cost across all sensors (for display)
+  const totalCost = sensors.reduce(
+    (sum, s) => sum + (liveCounts[s.sensor_id] ?? s.message_count) * message_rate, 0,
+  );
+  const totalMessages = sensors.reduce(
+    (sum, s) => sum + (liveCounts[s.sensor_id] ?? s.message_count), 0,
+  );
+
+  // Sensors with exhausted budgets (running cost >= their assigned budget)
+  const exhaustedBudgetSensors = budgetedSensors.filter(s => {
+    const budget = parseFloat(String(s.sensor_metadata!.budget));
+    const cost   = (liveCounts[s.sensor_id] ?? s.message_count) * message_rate;
+    return budget > 0 && cost >= budget;
+  });
+
+  // Bug 3: suspension rules —
+  //   • Sensors WITH a budget: suspend individually when running_cost >= budget (regardless of cycle)
+  //   • Sensors WITHOUT a budget: suspend tenant account when their combined cost > balance
+  useEffect(() => {
+    if (!billing || billing.status !== "active") return;
+    // Unbudgeted sensor cost exhausts the shared balance → suspend account
+    if (unbudgetedCost > 0 && balance > 0 && unbudgetedCost > balance) {
+      suspendBilling().then(() => {
+        toast.error("Account suspended: unbudgeted sensor costs exceed your balance. Top up to restore access.");
+        refetchBilling();
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unbudgetedCost, balance]);
+
+  // Billing cycle
+  const [freqValue, setFreqValue] = useState<string>("");
+  useEffect(() => {
+    if (billing?.frequency) setFreqValue(billing.frequency);
+  }, [billing?.frequency]);
+
+  const cycleOverdue = billing?.due_date
+    ? new Date(billing.due_date) < new Date()
+    : false;
+
+  const handleFrequencyChange = async (freq: string) => {
+    setFreqValue(freq);
+    try {
+      await updateFrequency({ frequency: freq as "weekly" | "monthly" | "quarterly" | "yearly" }).unwrap();
+      toast.success(`Billing frequency updated to ${freq}`);
+    } catch {
+      toast.error("Failed to update billing frequency");
+    }
+  };
+
+  const handleProcessCycle = async () => {
+    const now = new Date();
+    const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    try {
+      await processCycle({ amount: totalCost, message_count: totalMessages, usage_period: period }).unwrap();
+      toast.success("Billing cycle processed — balance updated");
+      refetchBilling();
+    } catch {
+      toast.error("Failed to process billing cycle");
+    }
+  };
 
   const [selectedMethod, setSelectedMethod] = useState<MethodKey | null>(null);
 
@@ -416,28 +510,133 @@ const SetupBilling = () => {
       </div>
 
       <div className="max-w-lg space-y-6">
-        {/* Feature 3: Balance + Current Cost cards */}
+        {/* Balance + Running Cost + Billing Cycle */}
         {billing && (
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-4 flex items-center justify-between">
-              <div>
-                <p className="text-xs text-gray-400 uppercase tracking-wide">Current balance</p>
-                <p className="text-2xl font-bold text-gray-800 mt-0.5">${balance.toFixed(2)}</p>
+          <>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-gray-400 uppercase tracking-wide">Current balance</p>
+                  <p className="text-2xl font-bold text-gray-800 mt-0.5">${balance.toFixed(2)}</p>
+                </div>
+                <span className={`text-xs font-semibold px-3 py-1 rounded-full capitalize ${
+                  billing.status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500"
+                }`}>
+                  {billing.status}
+                </span>
               </div>
-              <span className={`text-xs font-semibold px-3 py-1 rounded-full capitalize ${
-                billing.status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500"
-              }`}>
-                {billing.status}
-              </span>
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-4">
+                <p className="text-xs text-gray-400 uppercase tracking-wide">Running cost</p>
+                <p className="text-2xl font-bold text-purple-600 mt-0.5">${totalCost.toFixed(4)}</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  {totalMessages.toLocaleString()} msgs × ${message_rate}
+                </p>
+              </div>
             </div>
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-4">
-              <p className="text-xs text-gray-400 uppercase tracking-wide">Current cost</p>
-              <p className="text-2xl font-bold text-purple-600 mt-0.5">${totalCost.toFixed(4)}</p>
-              <p className="text-xs text-gray-400 mt-1">
-                {(billing.message_count ?? 0).toLocaleString()} msgs × $0.00005
-              </p>
+
+            {/* Bug 3: suspension warnings */}
+            {/* Budgeted sensors over their limit */}
+            {exhaustedBudgetSensors.length > 0 && (
+              <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-4 flex items-start gap-3">
+                <svg className="w-5 h-5 text-red-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div>
+                  <p className="text-sm font-semibold text-red-700">
+                    {exhaustedBudgetSensors.length} sensor{exhaustedBudgetSensors.length > 1 ? "s" : ""} over budget
+                  </p>
+                  <p className="text-xs text-red-600 mt-0.5">
+                    {exhaustedBudgetSensors.map(s => s.sensor_name).join(", ")} — budget exhausted and will be suspended.
+                    Increase the budget in <a href="/billing/budget" className="underline">Sensor Budgets</a> to restore.
+                  </p>
+                </div>
+              </div>
+            )}
+            {/* Unbudgeted sensors exhausted shared balance */}
+            {unbudgetedCost > balance && balance >= 0 && billing.status !== "active" && (
+              <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-4 flex items-start gap-3">
+                <svg className="w-5 h-5 text-red-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div>
+                  <p className="text-sm font-semibold text-red-700">Account suspended — balance exhausted</p>
+                  <p className="text-xs text-red-600 mt-0.5">
+                    Unbudgeted sensor costs (${unbudgetedCost.toFixed(4)}) exceeded your balance. Top up to restore all unbudgeted services.
+                  </p>
+                </div>
+              </div>
+            )}
+            {/* Early warning: unbudgeted cost at 80%+ of balance */}
+            {unbudgetedCost >= balance * 0.8 && unbudgetedCost <= balance && balance > 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 flex items-start gap-3">
+                <svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div>
+                  <p className="text-sm font-semibold text-amber-800">Balance running low</p>
+                  <p className="text-xs text-amber-600 mt-0.5">
+                    Unbudgeted sensor costs are {((unbudgetedCost / balance) * 100).toFixed(0)}% of your balance.
+                    Assign budgets to sensors or top up to prevent suspension.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Billing cycle section */}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-5">
+              <p className="text-sm font-semibold text-gray-800 mb-4">Billing Cycle</p>
+              <div className="flex items-center gap-4 mb-4">
+                <div className="flex-1">
+                  <label className={labelCls}>Billing frequency</label>
+                  <select
+                    value={freqValue}
+                    onChange={(e) => handleFrequencyChange(e.target.value)}
+                    disabled={freqLoading}
+                    className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white disabled:opacity-60"
+                  >
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                    <option value="quarterly">Quarterly</option>
+                    <option value="yearly">Yearly</option>
+                  </select>
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs text-gray-400 uppercase tracking-wide mb-1.5">Next billing date</p>
+                  <p className={`text-sm font-semibold ${cycleOverdue ? "text-red-600" : "text-gray-700"}`}>
+                    {billing.due_date
+                      ? new Date(billing.due_date).toLocaleDateString(undefined, { dateStyle: "medium" })
+                      : "—"}
+                    {cycleOverdue && <span className="ml-2 text-xs font-normal text-red-500">(overdue)</span>}
+                  </p>
+                </div>
+              </div>
+              {cycleOverdue && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-amber-800">Billing cycle overdue</p>
+                    <p className="text-xs text-amber-600 mt-0.5">
+                      Running cost of ${totalCost.toFixed(4)} will be deducted from your balance.
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleProcessCycle}
+                    disabled={cycleLoading}
+                    className="text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60 shrink-0 ml-4"
+                  >
+                    {cycleLoading ? "Processing…" : "Process cycle"}
+                  </button>
+                </div>
+              )}
+              {!cycleOverdue && billing.due_date && (
+                <p className="text-xs text-gray-400">
+                  Running cost will be automatically deducted on the next billing date.
+                </p>
+              )}
             </div>
-          </div>
+          </>
         )}
 
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8">

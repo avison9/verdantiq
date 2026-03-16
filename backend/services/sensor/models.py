@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Enum, DateTime, ForeignKey, JSON
+from sqlalchemy import Column, Integer, BigInteger, String, Enum, DateTime, Float, ForeignKey, JSON
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from configs import Base
@@ -31,6 +31,7 @@ class Sensor(Base):
     sensor_metadata = Column(JSON, nullable=True)
     mqtt_token     = Column(String(36), nullable=False, unique=True)
     message_count  = Column(Integer, default=0, nullable=False)
+    storage_bytes  = Column(BigInteger, default=0, nullable=False)
     status         = Column(Enum(SensorStatus), nullable=False, default=SensorStatus.pending)
     last_message_at = Column(DateTime, nullable=True)
     created_at     = Column(DateTime, server_default=func.now(), nullable=False)
@@ -106,3 +107,15 @@ class UserRole(Base):
     __tablename__ = "user_roles"
     user_id = Column(Integer, ForeignKey("users.user_id"), primary_key=True)
     role_id = Column(Integer, ForeignKey("roles.role_id"), primary_key=True)
+
+
+class SensorStorage(Base):
+    __tablename__ = "sensor_storage"
+    storage_id   = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), index=True)
+    tenant_id    = Column(Integer, nullable=False, index=True)
+    sensor_id    = Column(String(36), ForeignKey("sensors.sensor_id", ondelete="CASCADE"), nullable=True, index=True)
+    allocated_gb = Column(Float, nullable=False, default=0.0)
+    used_bytes   = Column(BigInteger, nullable=False, default=0)
+    status       = Column(String(20), nullable=False, default="active")
+    created_at   = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at   = Column(DateTime, onupdate=func.now())
