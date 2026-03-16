@@ -357,3 +357,43 @@ def get_user_role(db: Session, user_id: int, tenant_id: int) -> Optional[str]:
         .first()
     )
     return role.role_name.lower() if role else None
+
+
+def create_sensor_storage(db: Session, tenant_id: int, data: schemas.SensorStorageCreate) -> models.SensorStorage:
+    storage = models.SensorStorage(
+        tenant_id=tenant_id,
+        sensor_id=data.sensor_id,
+        allocated_gb=data.allocated_gb,
+    )
+    db.add(storage)
+    db.commit()
+    db.refresh(storage)
+    return storage
+
+
+def get_sensor_storage_list(
+    db: Session, tenant_id: int, page: int = 1, per_page: int = 20
+) -> schemas.SensorStoragePage:
+    import math
+    q = db.query(models.SensorStorage).filter(models.SensorStorage.tenant_id == tenant_id)
+    total = q.count()
+    items = q.order_by(models.SensorStorage.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
+    return schemas.SensorStoragePage(
+        items=items,
+        total=total,
+        page=page,
+        per_page=per_page,
+        pages=max(1, math.ceil(total / per_page)),
+    )
+
+
+def delete_sensor_storage(db: Session, tenant_id: int, storage_id: str) -> bool:
+    storage = db.query(models.SensorStorage).filter(
+        models.SensorStorage.storage_id == storage_id,
+        models.SensorStorage.tenant_id == tenant_id,
+    ).first()
+    if not storage:
+        return False
+    db.delete(storage)
+    db.commit()
+    return True

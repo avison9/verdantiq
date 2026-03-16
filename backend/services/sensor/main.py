@@ -85,6 +85,9 @@ async def lifespan(app: FastAPI):
         conn.execute(text(
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name VARCHAR(50)"
         ))
+        conn.execute(text(
+            "ALTER TABLE sensors ADD COLUMN IF NOT EXISTS storage_bytes BIGINT NOT NULL DEFAULT 0"
+        ))
         conn.commit()
 
     yield
@@ -410,6 +413,36 @@ async def log_sensor_connection_event(
         .first()
     )
     return latest
+
+
+@app.post("/storage/", response_model=schemas.SensorStorageResponse)
+async def create_storage(
+    body: schemas.SensorStorageCreate,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return crud.create_sensor_storage(db, current_user.tenant_id, body)
+
+
+@app.get("/storage/", response_model=schemas.SensorStoragePage)
+async def list_storage(
+    page: int = Query(default=1, ge=1),
+    per_page: int = Query(default=20, ge=1, le=100),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return crud.get_sensor_storage_list(db, current_user.tenant_id, page, per_page)
+
+
+@app.delete("/storage/{storage_id}", status_code=204)
+async def delete_storage(
+    storage_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    deleted = crud.delete_sensor_storage(db, current_user.tenant_id, storage_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Storage allocation not found")
 
 
 @app.post("/internal/sensors/{sensor_id}/messages")

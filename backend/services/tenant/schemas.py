@@ -69,6 +69,22 @@ class BillingProcessCycleRequest(BaseModel):
     usage_period: Optional[str] = None
 
 
+class BillingRateResponse(BaseModel):
+    id: int
+    message_rate: float
+    storage_rate: float
+    query_rate: float
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class BillingRateUpdate(BaseModel):
+    message_rate: Optional[float] = None
+    storage_rate: Optional[float] = None
+    query_rate: Optional[float] = None
+
+
 class TransactionType(str, Enum):
     credit = "credit"
     debit = "debit"

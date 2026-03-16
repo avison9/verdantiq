@@ -228,3 +228,26 @@ def process_billing_cycle(
     db.commit()
     db.refresh(billing)
     return billing
+
+
+def get_billing_rate(db: Session) -> models.BillingRate:
+    rate = db.query(models.BillingRate).first()
+    if not rate:
+        rate = models.BillingRate()
+        db.add(rate)
+        db.commit()
+        db.refresh(rate)
+    return rate
+
+
+def update_billing_rate(db: Session, updates: schemas.BillingRateUpdate) -> models.BillingRate:
+    rate = get_billing_rate(db)
+    if updates.message_rate is not None:
+        rate.message_rate = updates.message_rate
+    if updates.storage_rate is not None:
+        rate.storage_rate = updates.storage_rate
+    if updates.query_rate is not None:
+        rate.query_rate = updates.query_rate
+    db.commit()
+    db.refresh(rate)
+    return rate
