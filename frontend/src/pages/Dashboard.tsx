@@ -3,10 +3,9 @@ import { Link } from "react-router-dom";
 import usePageTitle from "../hooks/usePageTitle";
 import { useGetMeQuery } from "../redux/apislices/authApiSlice";
 import { useGetSensorsQuery, useGetBillingQuery } from "../redux/apislices/userDashboardApiSlice";
+import { useBillingRates } from "../hooks/useBillingRates";
 
 const DATA_SERVICE_URL = import.meta.env.VITE_DATA_SERVICE_URL ?? "http://localhost:8090";
-
-const COST_PER_MESSAGE = 0.0005;
 
 const STATUS_STYLES: Record<string, string> = {
   active:      "bg-emerald-100 text-emerald-700",
@@ -35,6 +34,7 @@ function sensorIcon(type: string) {
 
 const Dashboard = () => {
   usePageTitle("Dashboard — VerdantIQ");
+  const { message_rate } = useBillingRates();
 
   const { data: me, isLoading: meLoading } = useGetMeQuery();
   // Bug 1: poll every 30 s so message counts update from pipeline
@@ -303,7 +303,7 @@ const Dashboard = () => {
             </Link>
             <span className="text-gray-200">·</span>
             <span className="text-xs text-gray-400">
-              Rate: $0.0005/msg · {billing?.status === "active" ? "Billing active" : "Billing inactive"}
+              Rate: ${message_rate}/msg · {billing?.status === "active" ? "Billing active" : "Billing inactive"}
             </span>
           </div>
         </div>

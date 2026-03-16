@@ -8,10 +8,10 @@ import {
   useLogConnectionEventMutation,
   useGetBillingQuery,
 } from "../../redux/apislices/userDashboardApiSlice";
+import { useBillingRates } from "../../hooks/useBillingRates";
 import { STATUS_STYLES, sensorIcon } from "./sensorUtils";
 
 const DATA_SERVICE_URL  = import.meta.env.VITE_DATA_SERVICE_URL ?? "http://localhost:8090";
-const COST_PER_MESSAGE  = 0.0005;    // $0.0005 per message = $0.50 per 1 000 msgs
 const ONE_HOUR_MS       = 3_600_000; // hardware pipeline refresh cadence
 const MSG_POLL_MS       = 30_000;    // message count pipeline refresh cadence
 
@@ -246,6 +246,7 @@ const nextId = () => ++_lineId;
 const SensorDetail = () => {
   const { sensorId } = useParams<{ sensorId: string }>();
   const navigate     = useNavigate();
+  const { message_rate } = useBillingRates();
 
   // Bug 1: poll every 30 s so message_count updates from pipeline without terminal
   const { data: sensor, isLoading, isError } = useGetSensorQuery(sensorId ?? "", {
@@ -537,7 +538,7 @@ const SensorDetail = () => {
     if (!budget) return;
     const budgetNum    = parseFloat(String(budget));
     const count        = liveMessageCount ?? sensor.message_count;
-    const runningCost  = count * COST_PER_MESSAGE;
+    const runningCost  = count * message_rate;
     if (!isNaN(budgetNum) && budgetNum > 0 && runningCost >= budgetNum && sensor.status === "active") {
       updateStatus({ sensor_id: sensor.sensor_id, status: "inactive" });
       fetch(`${DATA_SERVICE_URL}/sensors/${sensor.tenant_id}/${sensor.sensor_id}/disconnect`, {
@@ -606,7 +607,7 @@ const SensorDetail = () => {
 
   // Feature 1: billing card values — prefer live Kafka count over stale DB value
   const messageCount  = liveMessageCount ?? sensor?.message_count ?? 0;
-  const runningCost   = messageCount * COST_PER_MESSAGE;
+  const runningCost   = messageCount * message_rate;
   const lastMonthCost = get("last_month_cost");
   const budgetRaw     = get("budget");
   const budgetNum     = budgetRaw ? parseFloat(budgetRaw) : null;
@@ -816,7 +817,7 @@ const SensorDetail = () => {
                 {/* Rate info */}
                 <div className="pt-2 mt-1 border-t border-gray-50">
                   <p className="text-xs text-gray-300">
-                    Rate: ${COST_PER_MESSAGE.toFixed(5)}/msg
+                    Rate: ${message_rate.toFixed(5)}/msg
                     {billing?.balance !== undefined && (
                       <> · Balance: ${billing.balance.toFixed(2)}</>
                     )}

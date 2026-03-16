@@ -13,10 +13,44 @@ export interface Sensor {
   sensor_metadata: Record<string, unknown> | null;
   mqtt_token: string;
   message_count: number;
+  storage_bytes: number;
   status: SensorStatus;
   last_message_at: string | null;
   created_at: string;
   updated_at: string | null;
+}
+
+export interface BillingRate {
+  id: number;
+  message_rate: number;
+  storage_rate: number;
+  query_rate: number;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface SensorStorage {
+  storage_id: string;
+  tenant_id: number;
+  sensor_id: string | null;
+  allocated_gb: number;
+  used_bytes: number;
+  status: string;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface SensorStoragePage {
+  items: SensorStorage[];
+  total: number;
+  page: number;
+  per_page: number;
+  pages: number;
+}
+
+export interface SensorStorageCreate {
+  sensor_id?: string;
+  allocated_gb: number;
 }
 
 export interface SensorPage {
@@ -251,6 +285,45 @@ export const userDashboardApiSlice = baseApiSlice.injectEndpoints({
         `${APIendPoints.billingTransactions}/?page=${page}&per_page=${per_page}`,
       providesTags: ["Transaction"],
     }),
+    suspendBilling: builder.mutation<Billing, void>({
+      query: () => ({
+        url: `${APIendPoints.billingSuspend}`,
+        method: "POST",
+      }),
+      invalidatesTags: ["Billing"],
+    }),
+    getBillingRates: builder.query<BillingRate, void>({
+      query: () => `${APIendPoints.billingRates}/`,
+      providesTags: ["Billing"],
+    }),
+    updateBillingRates: builder.mutation<BillingRate, Partial<BillingRate>>({
+      query: (body) => ({
+        url: `${APIendPoints.billingRates}/`,
+        method: "PATCH",
+        body,
+      }),
+      invalidatesTags: ["Billing"],
+    }),
+    getSensorStorageList: builder.query<SensorStoragePage, { page?: number; per_page?: number }>({
+      query: ({ page = 1, per_page = 20 } = {}) =>
+        `${APIendPoints.storage}/?page=${page}&per_page=${per_page}`,
+      providesTags: ["Sensor"],
+    }),
+    createSensorStorage: builder.mutation<SensorStorage, SensorStorageCreate>({
+      query: (body) => ({
+        url: `${APIendPoints.storage}/`,
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["Sensor"],
+    }),
+    deleteSensorStorage: builder.mutation<void, string>({
+      query: (storage_id) => ({
+        url: `${APIendPoints.storage}/${storage_id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: ["Sensor"],
+    }),
     updateBillingFrequency: builder.mutation<Billing, BillingFrequencyUpdate>({
       query: (body) => ({
         url: `${APIendPoints.billingFrequency}`,
@@ -287,4 +360,10 @@ export const {
   useGetTransactionsQuery,
   useUpdateBillingFrequencyMutation,
   useProcessBillingCycleMutation,
+  useSuspendBillingMutation,
+  useGetBillingRatesQuery,
+  useUpdateBillingRatesMutation,
+  useGetSensorStorageListQuery,
+  useCreateSensorStorageMutation,
+  useDeleteSensorStorageMutation,
 } = userDashboardApiSlice;

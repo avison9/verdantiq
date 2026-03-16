@@ -8,9 +8,9 @@ import {
   useGetBillingQuery,
   type Sensor,
 } from "../../redux/apislices/userDashboardApiSlice";
+import { useBillingRates } from "../../hooks/useBillingRates";
 import { sensorIcon } from "../sensors/sensorUtils";
 
-const COST_PER_MESSAGE = 0.0005;
 const DATA_SERVICE_URL = import.meta.env.VITE_DATA_SERVICE_URL ?? "http://localhost:8090";
 
 // ── Budget editor row ─────────────────────────────────────────────────────────
@@ -18,8 +18,9 @@ const DATA_SERVICE_URL = import.meta.env.VITE_DATA_SERVICE_URL ?? "http://localh
 function BudgetRow({
   sensor,
   liveCount,
+  messageRate,
   onSaved,
-}: { sensor: Sensor; liveCount: number | undefined; onSaved: () => void }) {
+}: { sensor: Sensor; liveCount: number | undefined; messageRate: number; onSaved: () => void }) {
   const [updateSensor, { isLoading }] = useUpdateSensorMutation();
   const currentBudget = sensor.sensor_metadata?.budget != null
     ? String(sensor.sensor_metadata.budget)
@@ -28,7 +29,7 @@ function BudgetRow({
   const [value,    setValue]    = useState(currentBudget);
 
   const msgCount    = liveCount ?? sensor.message_count;
-  const runningCost = msgCount * COST_PER_MESSAGE;
+  const runningCost = msgCount * messageRate;
   const budgetNum   = currentBudget ? parseFloat(currentBudget) : null;
   const pct         = budgetNum && budgetNum > 0 ? (runningCost / budgetNum) * 100 : null;
 
@@ -174,6 +175,7 @@ function BudgetRow({
 
 const SensorBudget = () => {
   usePageTitle("Sensor Budgets — VerdantIQ");
+  const { message_rate } = useBillingRates();
 
   const { data: me }      = useGetMeQuery();
   const { data: billing } = useGetBillingQuery();
@@ -202,12 +204,12 @@ const SensorBudget = () => {
 
   const sensors = sensorsPage?.items ?? [];
 
-  const totalCost      = sensors.reduce((s, x) => s + (liveCounts[x.sensor_id] ?? x.message_count) * COST_PER_MESSAGE, 0);
+  const totalCost      = sensors.reduce((s, x) => s + (liveCounts[x.sensor_id] ?? x.message_count) * message_rate, 0);
   const balance        = billing?.balance ?? 0;
   const sensorsOverBudget = sensors.filter(s => {
     const b = s.sensor_metadata?.budget;
     if (!b) return false;
-    return (liveCounts[s.sensor_id] ?? s.message_count) * COST_PER_MESSAGE >= parseFloat(String(b));
+    return (liveCounts[s.sensor_id] ?? s.message_count) * message_rate >= parseFloat(String(b));
   });
 
   return (
@@ -245,7 +247,7 @@ const SensorBudget = () => {
       <div className="mb-6 bg-blue-50 border border-blue-200 rounded-xl px-5 py-4 text-sm text-blue-800 max-w-3xl">
         <p className="font-medium mb-1">How budgets work</p>
         <ul className="list-disc list-inside space-y-1 text-xs text-blue-700">
-          <li>Budget = max USD a sensor can spend (messages × $0.0005/msg)</li>
+          <li>Budget = max USD a sensor can spend (messages × ${message_rate}/msg)</li>
           <li>When running cost reaches the budget, the sensor is automatically deactivated</li>
           <li>Sensors without a budget are billed from the tenant account balance</li>
           <li>If tenant balance runs out, all budget-less sensors are disconnected</li>
@@ -271,7 +273,7 @@ const SensorBudget = () => {
               </thead>
               <tbody>
                 {sensors.map((s) => (
-                  <BudgetRow key={s.sensor_id} sensor={s} liveCount={liveCounts[s.sensor_id]} onSaved={refetch} />
+                  <BudgetRow key={s.sensor_id} sensor={s} liveCount={liveCounts[s.sensor_id]} messageRate={message_rate} onSaved={refetch} />
                 ))}
               </tbody>
             </table>
