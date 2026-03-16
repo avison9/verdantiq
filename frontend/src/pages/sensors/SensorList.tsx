@@ -12,7 +12,6 @@ import {
 } from "../../redux/apislices/userDashboardApiSlice";
 
 import { STATUS_STYLES, sensorIcon } from "./sensorUtils";
-export { STATUS_STYLES, sensorIcon };
 
 const DATA_SERVICE_URL = import.meta.env.VITE_DATA_SERVICE_URL ?? "http://localhost:8090";
 

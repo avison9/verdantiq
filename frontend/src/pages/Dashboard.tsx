@@ -75,10 +75,6 @@ const Dashboard = () => {
     ? Object.values(liveCounts).reduce((s, c) => s + c, 0)
     : sensors.reduce((s, x) => s + x.message_count, 0);
 
-  // Billing cost uses live Kafka counts where available, falls back to DB value
-  const totalMessageCost = sensors.reduce(
-    (sum, s) => sum + (liveCounts[s.sensor_id] ?? s.message_count) * COST_PER_MESSAGE, 0,
-  );
 
   if (meLoading) {
     return (
