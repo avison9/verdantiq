@@ -16,7 +16,7 @@ const AnalyticsOverview = () => {
     { tenant_id: me?.tenant_id ?? 0, per_page: 100 },
     { skip: !me, pollingInterval: 30_000 },
   );
-  const { data: storageList } = useGetSensorStorageListQuery();
+  const { data: storageList } = useGetSensorStorageListQuery({});
   const [liveCounts, setLiveCounts] = useState<Record<string, number>>({});
   const { storage_rate } = useBillingRates();
 
