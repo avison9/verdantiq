@@ -14,11 +14,6 @@ const STATUS_STYLES: Record<string, string> = {
   maintenance: "bg-yellow-100 text-yellow-700",
 };
 
-const BILLING_STATUS_STYLES: Record<string, string> = {
-  active:    "bg-emerald-100 text-emerald-700",
-  inactive:  "bg-gray-100 text-gray-500",
-  suspended: "bg-red-100 text-red-600",
-};
 
 const SENSOR_TYPE_ICONS: Record<string, string> = {
   temperature: "🌡️",
