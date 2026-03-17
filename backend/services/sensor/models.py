@@ -32,6 +32,7 @@ class Sensor(Base):
     mqtt_token     = Column(String(36), nullable=False, unique=True)
     message_count  = Column(Integer, default=0, nullable=False)
     storage_bytes  = Column(BigInteger, default=0, nullable=False)
+    farm_id        = Column(String(36), ForeignKey("farms.farm_id", ondelete="SET NULL"), nullable=True, index=True)
     status         = Column(Enum(SensorStatus), nullable=False, default=SensorStatus.pending)
     last_message_at = Column(DateTime, nullable=True)
     created_at     = Column(DateTime, server_default=func.now(), nullable=False)
@@ -107,6 +108,28 @@ class UserRole(Base):
     __tablename__ = "user_roles"
     user_id = Column(Integer, ForeignKey("users.user_id"), primary_key=True)
     role_id = Column(Integer, ForeignKey("roles.role_id"), primary_key=True)
+
+
+class Farm(Base):
+    __tablename__ = "farms"
+    farm_id           = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), index=True)
+    tenant_id         = Column(Integer, nullable=False, index=True)
+    farm_name         = Column(String(100), nullable=False)
+    address           = Column(String(255), nullable=True)
+    country           = Column(String(100), nullable=True)
+    farm_size_ha      = Column(Float, nullable=True)
+    farm_type         = Column(String(30), nullable=True)  # greenhouse | open_field | mixed
+    latitude          = Column(Float, nullable=True)
+    longitude         = Column(Float, nullable=True)
+    perimeter_km      = Column(Float, nullable=True)
+    crops             = Column(JSON, nullable=True)         # list of crop name strings
+    rainfall_avg_mm   = Column(Float, nullable=True)
+    sunlight_avg_hrs  = Column(Float, nullable=True)
+    soil_type         = Column(String(100), nullable=True)
+    crop_history      = Column(JSON, nullable=True)         # list of {year, crops, yield}
+    notes             = Column(String(1000), nullable=True)
+    created_at        = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at        = Column(DateTime, onupdate=func.now())
 
 
 class SensorStorage(Base):
