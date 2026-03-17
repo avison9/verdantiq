@@ -186,21 +186,30 @@ const SensorBudget = () => {
 
   // Live message counts from Kafka watermarks
   const [liveCounts, setLiveCounts] = useState<Record<string, number>>({});
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchCounts = async () => {
+    try {
+      const r = await fetch(`${DATA_SERVICE_URL}/sensors/message-counts`, {
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!r.ok) return;
+      const body = await r.json() as { counts: Record<string, number> };
+      setLiveCounts(prev => ({ ...prev, ...(body.counts ?? {}) }));
+    } catch { /* ignore */ }
+  };
+
   useEffect(() => {
-    const fetchCounts = async () => {
-      try {
-        const r = await fetch(`${DATA_SERVICE_URL}/sensors/message-counts`, {
-          signal: AbortSignal.timeout(8000),
-        });
-        if (!r.ok) return;
-        const body = await r.json() as { counts: Record<string, number> };
-        setLiveCounts(prev => ({ ...prev, ...(body.counts ?? {}) }));
-      } catch { /* ignore */ }
-    };
     fetchCounts();
     const id = setInterval(fetchCounts, 30_000);
     return () => clearInterval(id);
   }, []);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([refetch(), fetchCounts()]);
+    setRefreshing(false);
+  };
 
   const sensors = sensorsPage?.items ?? [];
 
@@ -214,11 +223,22 @@ const SensorBudget = () => {
 
   return (
     <div className="px-6 py-8">
-      <div className="mb-8">
-        <h1 className="text-lg font-semibold text-gray-800">Sensor Budgets</h1>
-        <p className="text-sm text-gray-400 mt-0.5">
-          Set spending limits per sensor. A sensor auto-deactivates when its running cost reaches the budget.
-        </p>
+      <div className="mb-8 flex items-start justify-between">
+        <div>
+          <h1 className="text-lg font-semibold text-gray-800">Sensor Budgets</h1>
+          <p className="text-sm text-gray-400 mt-0.5">
+            Set spending limits per sensor. A sensor auto-deactivates when its running cost reaches the budget.
+          </p>
+        </div>
+        <button onClick={handleRefresh} disabled={refreshing || isLoading}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-xs text-gray-500 hover:text-gray-700 hover:border-gray-300 transition-colors disabled:opacity-40"
+          title="Refresh running costs">
+          <svg className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          Refresh
+        </button>
       </div>
 
       {/* Summary cards */}

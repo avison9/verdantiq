@@ -17,6 +17,10 @@ import SetupBilling from "./pages/billing/SetupBilling";
 import Transactions from "./pages/billing/Transactions";
 import SensorBudget from "./pages/billing/SensorBudget";
 import AnalyticsOverview from "./pages/analytics/AnalyticsOverview";
+import FarmAdd from "./pages/farm/FarmAdd";
+import FarmList from "./pages/farm/FarmList";
+import FarmDetail from "./pages/farm/FarmDetail";
+import RunningCostDetail from "./pages/billing/RunningCostDetail";
 import Team from "./pages/team/Team";
 import StorageAdd from "./pages/storage/StorageAdd";
 import StorageList from "./pages/storage/StorageList";
@@ -62,9 +66,15 @@ export const router = createBrowserRouter([
           { path: "/billing/setup",                        element: <SetupBilling /> },
           { path: "/billing/transactions",                 element: <Transactions /> },
           { path: "/billing/budget",                       element: <SensorBudget /> },
+          // Farm sub-pages
+          { path: "/farm/add",                             element: <FarmAdd /> },
+          { path: "/farm/management",                      element: <FarmList /> },
+          { path: "/farm/:farmId",                         element: <FarmDetail /> },
           // Analytics sub-pages
           { path: "/analytics",                            element: <Navigate to="/analytics/overview" replace /> },
           { path: "/analytics/overview",                   element: <AnalyticsOverview /> },
+          // Billing detail
+          { path: "/billing/running-cost",                 element: <RunningCostDetail /> },
           // Storage sub-pages
           { path: "/storage/add",                          element: <StorageAdd /> },
           { path: "/storage/list",                         element: <StorageList /> },

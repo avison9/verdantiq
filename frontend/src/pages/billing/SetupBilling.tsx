@@ -505,143 +505,16 @@ const SetupBilling = () => {
         <p className="text-sm text-gray-400 mt-0.5">
           {selectedMethod
             ? `Add funds via ${PAYMENT_OPTIONS.find((o) => o.key === selectedMethod)?.label}`
-            : "Choose how you'd like to top up your account"}
+            : "Manage your billing and top up your account"}
         </p>
       </div>
 
-      <div className="max-w-lg space-y-6">
-        {/* Balance + Running Cost + Billing Cycle */}
-        {billing && (
-          <>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-4 flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-gray-400 uppercase tracking-wide">Current balance</p>
-                  <p className="text-2xl font-bold text-gray-800 mt-0.5">${balance.toFixed(2)}</p>
-                </div>
-                <span className={`text-xs font-semibold px-3 py-1 rounded-full capitalize ${
-                  billing.status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500"
-                }`}>
-                  {billing.status}
-                </span>
-              </div>
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-4">
-                <p className="text-xs text-gray-400 uppercase tracking-wide">Running cost</p>
-                <p className="text-2xl font-bold text-purple-600 mt-0.5">${totalCost.toFixed(4)}</p>
-                <p className="text-xs text-gray-400 mt-1">
-                  {totalMessages.toLocaleString()} msgs × ${message_rate}
-                </p>
-              </div>
-            </div>
+      {/* ── 2-column layout: payment left, account info right ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
 
-            {/* Bug 3: suspension warnings */}
-            {/* Budgeted sensors over their limit */}
-            {exhaustedBudgetSensors.length > 0 && (
-              <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-4 flex items-start gap-3">
-                <svg className="w-5 h-5 text-red-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-                <div>
-                  <p className="text-sm font-semibold text-red-700">
-                    {exhaustedBudgetSensors.length} sensor{exhaustedBudgetSensors.length > 1 ? "s" : ""} over budget
-                  </p>
-                  <p className="text-xs text-red-600 mt-0.5">
-                    {exhaustedBudgetSensors.map(s => s.sensor_name).join(", ")} — budget exhausted and will be suspended.
-                    Increase the budget in <a href="/billing/budget" className="underline">Sensor Budgets</a> to restore.
-                  </p>
-                </div>
-              </div>
-            )}
-            {/* Unbudgeted sensors exhausted shared balance */}
-            {unbudgetedCost > balance && balance >= 0 && billing.status !== "active" && (
-              <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-4 flex items-start gap-3">
-                <svg className="w-5 h-5 text-red-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-                <div>
-                  <p className="text-sm font-semibold text-red-700">Account suspended — balance exhausted</p>
-                  <p className="text-xs text-red-600 mt-0.5">
-                    Unbudgeted sensor costs (${unbudgetedCost.toFixed(4)}) exceeded your balance. Top up to restore all unbudgeted services.
-                  </p>
-                </div>
-              </div>
-            )}
-            {/* Early warning: unbudgeted cost at 80%+ of balance */}
-            {unbudgetedCost >= balance * 0.8 && unbudgetedCost <= balance && balance > 0 && (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 flex items-start gap-3">
-                <svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-                <div>
-                  <p className="text-sm font-semibold text-amber-800">Balance running low</p>
-                  <p className="text-xs text-amber-600 mt-0.5">
-                    Unbudgeted sensor costs are {((unbudgetedCost / balance) * 100).toFixed(0)}% of your balance.
-                    Assign budgets to sensors or top up to prevent suspension.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Billing cycle section */}
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-5">
-              <p className="text-sm font-semibold text-gray-800 mb-4">Billing Cycle</p>
-              <div className="flex items-center gap-4 mb-4">
-                <div className="flex-1">
-                  <label className={labelCls}>Billing frequency</label>
-                  <select
-                    value={freqValue}
-                    onChange={(e) => handleFrequencyChange(e.target.value)}
-                    disabled={freqLoading}
-                    className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white disabled:opacity-60"
-                  >
-                    <option value="weekly">Weekly</option>
-                    <option value="monthly">Monthly</option>
-                    <option value="quarterly">Quarterly</option>
-                    <option value="yearly">Yearly</option>
-                  </select>
-                </div>
-                <div className="flex-1">
-                  <p className="text-xs text-gray-400 uppercase tracking-wide mb-1.5">Next billing date</p>
-                  <p className={`text-sm font-semibold ${cycleOverdue ? "text-red-600" : "text-gray-700"}`}>
-                    {billing.due_date
-                      ? new Date(billing.due_date).toLocaleDateString(undefined, { dateStyle: "medium" })
-                      : "—"}
-                    {cycleOverdue && <span className="ml-2 text-xs font-normal text-red-500">(overdue)</span>}
-                  </p>
-                </div>
-              </div>
-              {cycleOverdue && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-amber-800">Billing cycle overdue</p>
-                    <p className="text-xs text-amber-600 mt-0.5">
-                      Running cost of ${totalCost.toFixed(4)} will be deducted from your balance.
-                    </p>
-                  </div>
-                  <button
-                    onClick={handleProcessCycle}
-                    disabled={cycleLoading}
-                    className="text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60 shrink-0 ml-4"
-                  >
-                    {cycleLoading ? "Processing…" : "Process cycle"}
-                  </button>
-                </div>
-              )}
-              {!cycleOverdue && billing.due_date && (
-                <p className="text-xs text-gray-400">
-                  Running cost will be automatically deducted on the next billing date.
-                </p>
-              )}
-            </div>
-          </>
-        )}
-
+        {/* ── LEFT: Payment method panel ── */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
           {!selectedMethod ? (
-            /* ── Payment method selection ── */
             <div className="space-y-3">
               <h2 className="text-base font-bold text-gray-900 mb-5">
                 Select payment method
@@ -668,13 +541,146 @@ const SetupBilling = () => {
               ))}
             </div>
           ) : (
-            /* ── Method-specific form ── */
             <>
               <h2 className="text-base font-bold text-gray-900 mb-6">Add funds</h2>
               {renderForm()}
             </>
           )}
         </div>
+
+        {/* ── RIGHT: Balance, running cost, billing cycle ── */}
+        <div className="space-y-4">
+          {billing ? (
+            <>
+              {/* Balance & Running Cost */}
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Current Balance</p>
+                    <p className="text-2xl font-bold text-gray-800">${balance.toFixed(2)}</p>
+                  </div>
+                  <span className={`text-xs font-semibold px-3 py-1 rounded-full capitalize ${
+                    billing.status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500"
+                  }`}>
+                    {billing.status}
+                  </span>
+                </div>
+                <div className="border-t border-gray-50 pt-4">
+                  <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Running Cost</p>
+                  <p className="text-2xl font-bold text-purple-600">${totalCost.toFixed(4)}</p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {totalMessages.toLocaleString()} msgs × ${message_rate}/msg
+                  </p>
+                </div>
+              </div>
+
+              {/* Suspension warnings */}
+              {exhaustedBudgetSensors.length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-4 flex items-start gap-3">
+                  <svg className="w-5 h-5 text-red-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <div>
+                    <p className="text-sm font-semibold text-red-700">
+                      {exhaustedBudgetSensors.length} sensor{exhaustedBudgetSensors.length > 1 ? "s" : ""} over budget
+                    </p>
+                    <p className="text-xs text-red-600 mt-0.5">
+                      {exhaustedBudgetSensors.map(s => s.sensor_name).join(", ")} — budget exhausted and will be suspended.
+                      Increase the budget in <a href="/billing/budget" className="underline">Sensor Budgets</a> to restore.
+                    </p>
+                  </div>
+                </div>
+              )}
+              {unbudgetedCost > balance && balance >= 0 && billing.status !== "active" && (
+                <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-4 flex items-start gap-3">
+                  <svg className="w-5 h-5 text-red-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <div>
+                    <p className="text-sm font-semibold text-red-700">Account suspended — balance exhausted</p>
+                    <p className="text-xs text-red-600 mt-0.5">
+                      Unbudgeted sensor costs (${unbudgetedCost.toFixed(4)}) exceeded your balance. Top up to restore all unbudgeted services.
+                    </p>
+                  </div>
+                </div>
+              )}
+              {unbudgetedCost >= balance * 0.8 && unbudgetedCost <= balance && balance > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 flex items-start gap-3">
+                  <svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <div>
+                    <p className="text-sm font-semibold text-amber-800">Balance running low</p>
+                    <p className="text-xs text-amber-600 mt-0.5">
+                      Unbudgeted sensor costs are {((unbudgetedCost / balance) * 100).toFixed(0)}% of your balance.
+                      Assign budgets to sensors or top up to prevent suspension.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Billing Cycle */}
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-5">
+                <p className="text-sm font-semibold text-gray-800 mb-4">Billing Cycle</p>
+                <div className="space-y-4">
+                  <div>
+                    <label className={labelCls}>Billing frequency</label>
+                    <select
+                      value={freqValue}
+                      onChange={(e) => handleFrequencyChange(e.target.value)}
+                      disabled={freqLoading}
+                      className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white disabled:opacity-60"
+                    >
+                      <option value="weekly">Weekly</option>
+                      <option value="monthly">Monthly</option>
+                      <option value="quarterly">Quarterly</option>
+                      <option value="yearly">Yearly</option>
+                    </select>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Next billing date</p>
+                    <p className={`text-sm font-semibold ${cycleOverdue ? "text-red-600" : "text-gray-700"}`}>
+                      {billing.due_date
+                        ? new Date(billing.due_date).toLocaleDateString(undefined, { dateStyle: "medium" })
+                        : "—"}
+                      {cycleOverdue && <span className="ml-2 text-xs font-normal text-red-500">(overdue)</span>}
+                    </p>
+                  </div>
+                </div>
+                {cycleOverdue && (
+                  <div className="mt-4 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-amber-800">Billing cycle overdue</p>
+                      <p className="text-xs text-amber-600 mt-0.5">
+                        ${totalCost.toFixed(4)} will be deducted from your balance.
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleProcessCycle}
+                      disabled={cycleLoading}
+                      className="text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60 shrink-0 ml-4"
+                    >
+                      {cycleLoading ? "Processing…" : "Process cycle"}
+                    </button>
+                  </div>
+                )}
+                {!cycleOverdue && billing.due_date && (
+                  <p className="text-xs text-gray-400 mt-3">
+                    Running cost will be automatically deducted on the next billing date.
+                  </p>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="bg-gray-50 rounded-2xl border border-gray-100 px-6 py-8 text-center">
+              <p className="text-sm text-gray-400">Complete a top-up to activate billing and see your account summary here.</p>
+            </div>
+          )}
+        </div>
+
       </div>
     </div>
   );

@@ -10,6 +10,7 @@ export interface Sensor {
   sensor_name: string;
   sensor_type: string;
   location: string | null;
+  farm_id: string | null;
   sensor_metadata: Record<string, unknown> | null;
   mqtt_token: string;
   message_count: number;
@@ -19,6 +20,54 @@ export interface Sensor {
   created_at: string;
   updated_at: string | null;
 }
+
+export interface Farm {
+  farm_id: string;
+  tenant_id: number;
+  farm_name: string;
+  address: string | null;
+  country: string | null;
+  farm_size_ha: number | null;
+  farm_type: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  perimeter_km: number | null;
+  crops: string[] | null;
+  rainfall_avg_mm: number | null;
+  sunlight_avg_hrs: number | null;
+  soil_type: string | null;
+  crop_history: Record<string, unknown>[] | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface FarmPage {
+  items: Farm[];
+  total: number;
+  page: number;
+  per_page: number;
+  pages: number;
+}
+
+export interface FarmCreate {
+  farm_name: string;
+  address?: string;
+  country?: string;
+  farm_size_ha?: number;
+  farm_type?: string;
+  latitude?: number;
+  longitude?: number;
+  perimeter_km?: number;
+  crops?: string[];
+  rainfall_avg_mm?: number;
+  sunlight_avg_hrs?: number;
+  soil_type?: string;
+  crop_history?: Record<string, unknown>[];
+  notes?: string;
+}
+
+export type FarmUpdate = Partial<FarmCreate>;
 
 export interface BillingRate {
   id: number;
@@ -340,6 +389,38 @@ export const userDashboardApiSlice = baseApiSlice.injectEndpoints({
       }),
       invalidatesTags: ["Billing", "Transaction"],
     }),
+    getFarms: builder.query<FarmPage, { page?: number; per_page?: number }>({
+      query: ({ page = 1, per_page = 100 } = {}) =>
+        `${APIendPoints.farms}/?page=${page}&per_page=${per_page}`,
+      providesTags: ["Farm"],
+    }),
+    getFarm: builder.query<Farm, string>({
+      query: (farm_id) => `${APIendPoints.farms}/${farm_id}`,
+      providesTags: ["Farm"],
+    }),
+    createFarm: builder.mutation<Farm, FarmCreate>({
+      query: (body) => ({
+        url: `${APIendPoints.farms}/`,
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["Farm"],
+    }),
+    updateFarm: builder.mutation<Farm, { farm_id: string } & FarmUpdate>({
+      query: ({ farm_id, ...body }) => ({
+        url: `${APIendPoints.farms}/${farm_id}`,
+        method: "PATCH",
+        body,
+      }),
+      invalidatesTags: ["Farm"],
+    }),
+    deleteFarm: builder.mutation<void, string>({
+      query: (farm_id) => ({
+        url: `${APIendPoints.farms}/${farm_id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: ["Farm"],
+    }),
   }),
 });
 
@@ -366,4 +447,9 @@ export const {
   useGetSensorStorageListQuery,
   useCreateSensorStorageMutation,
   useDeleteSensorStorageMutation,
+  useGetFarmsQuery,
+  useGetFarmQuery,
+  useCreateFarmMutation,
+  useUpdateFarmMutation,
+  useDeleteFarmMutation,
 } = userDashboardApiSlice;

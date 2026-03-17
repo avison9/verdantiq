@@ -142,9 +142,9 @@ const Dashboard = () => {
           color="emerald"
         />
         <StatCard
-          label="Messages processed"
-          value={sensorsLoading ? "…" : totalMessages.toLocaleString()}
-          sub="total IoT messages"
+          label="Running Cost"
+          value={sensorsLoading ? "…" : `$${(totalMessages * message_rate).toFixed(4)}`}
+          sub="this billing cycle"
           color="purple"
         />
         <StatCard
@@ -286,10 +286,12 @@ const Dashboard = () => {
               </p>
             </div>
             <div className="bg-gray-50 rounded-xl p-4">
-              <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Messages Processed</p>
-              <p className="text-xl font-bold text-purple-600">
-                {totalMessages.toLocaleString()}
-              </p>
+              <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Running Cost</p>
+              <Link to="/billing/running-cost" className="block">
+                <p className="text-xl font-bold text-purple-600 hover:text-purple-700 transition-colors">
+                  ${(totalMessages * message_rate).toFixed(4)}
+                </p>
+              </Link>
             </div>
             <div className="bg-gray-50 rounded-xl p-4">
               <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Active Sensors</p>
@@ -303,7 +305,7 @@ const Dashboard = () => {
             </Link>
             <span className="text-gray-200">·</span>
             <span className="text-xs text-gray-400">
-              Rate: ${message_rate}/msg · {billing?.status === "active" ? "Billing active" : "Billing inactive"}
+              {totalMessages.toLocaleString()} msgs × ${message_rate}/msg · {billing?.status === "active" ? "Billing active" : "Billing inactive"}
             </span>
           </div>
         </div>

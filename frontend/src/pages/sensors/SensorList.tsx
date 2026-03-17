@@ -279,28 +279,37 @@ const SensorList = () => {
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const { data: me } = useGetMeQuery();
-  const { data, isLoading, isFetching } = useGetSensorsQuery(
+  const { data, isLoading, isFetching, refetch } = useGetSensorsQuery(
     { tenant_id: me?.tenant_id ?? 0, page, per_page: perPage },
     { skip: !me, pollingInterval: 30_000 },
   );
 
   // Live message counts from Kafka watermarks — independent of terminal WebSocket
   const [liveCounts, setLiveCounts] = useState<Record<string, number>>({});
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchCounts = async () => {
+    try {
+      const r = await fetch(`${DATA_SERVICE_URL}/sensors/message-counts`, {
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!r.ok) return;
+      const body = await r.json() as { counts: Record<string, number> };
+      setLiveCounts(prev => ({ ...prev, ...(body.counts ?? {}) }));
+    } catch { /* ignore */ }
+  };
+
   useEffect(() => {
-    const fetchCounts = async () => {
-      try {
-        const r = await fetch(`${DATA_SERVICE_URL}/sensors/message-counts`, {
-          signal: AbortSignal.timeout(8000),
-        });
-        if (!r.ok) return;
-        const body = await r.json() as { counts: Record<string, number> };
-        setLiveCounts(prev => ({ ...prev, ...(body.counts ?? {}) }));
-      } catch { /* ignore */ }
-    };
     fetchCounts();
     const id = setInterval(fetchCounts, 30_000);
     return () => clearInterval(id);
   }, []);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([refetch(), fetchCounts()]);
+    setRefreshing(false);
+  };
   const [renameSensor, { isLoading: isRenaming }] = useRenameSensorMutation();
   const [deleteSensor, { isLoading: isDeleting }] = useDeleteSensorMutation();
 
@@ -403,6 +412,14 @@ const SensorList = () => {
               className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white w-52"
             />
           </div>
+          <button onClick={handleRefresh} disabled={refreshing || isFetching}
+            className="p-2 rounded-lg border border-gray-200 text-gray-400 hover:text-gray-700 hover:border-gray-300 transition-colors disabled:opacity-40"
+            title="Refresh message counts">
+            <svg className={`w-4 h-4 ${refreshing || isFetching ? "animate-spin" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
           <Link
             to="/sensors/onboard"
             className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"

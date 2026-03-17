@@ -1,220 +1,153 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { toast } from "react-toastify";
-import { useGetMeQuery, useUpdateMeMutation } from "../../redux/apislices/authApiSlice";
-import CountrySelect from "../../components/CountrySelect";
+import { Link } from "react-router-dom";
+import { useGetMeQuery } from "../../redux/apislices/authApiSlice";
+import { useGetFarmsQuery } from "../../redux/apislices/userDashboardApiSlice";
 import usePageTitle from "../../hooks/usePageTitle";
 
 const TenantProfile = () => {
-  usePageTitle("Organisation profile");
-  const navigate = useNavigate();
-  const { data: me, isLoading: isLoadingMe } = useGetMeQuery();
-  const [updateMe, { isLoading: isSaving }] = useUpdateMeMutation();
+  usePageTitle("Organisation — VerdantIQ");
+  const { data: me, isLoading: meLoading } = useGetMeQuery();
+  const { data: farmsPage } = useGetFarmsQuery({}, { skip: !me });
 
-  const [form, setForm] = useState({
-    country: "",
-    address: "",
-    farm_size: "",
-    crop_types_raw: "", // comma-separated input
-  });
+  const farms = farmsPage?.items ?? [];
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    const crop_types = form.crop_types_raw
-      .split(",")
-      .map((c) => c.trim())
-      .filter(Boolean);
-
-    const payload = {
-      tenant_profile: {
-        country: form.country || undefined,
-        address: form.address || undefined,
-        farm_size: form.farm_size ? Number(form.farm_size) : undefined,
-        crop_types: crop_types.length ? crop_types : undefined,
-      },
-    };
-
-    try {
-      await updateMe(payload).unwrap();
-      toast.success("Organisation profile updated successfully");
-    } catch (err: unknown) {
-      const error = err as { data?: { detail?: string } };
-      toast.error(error?.data?.detail ?? "Failed to update organisation profile");
-    }
-  };
-
-  if (isLoadingMe) {
+  if (meLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-10 w-10 border-4 border-emerald-500 border-t-transparent" />
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="animate-spin rounded-full h-8 w-8 border-4 border-emerald-500 border-t-transparent" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-10 px-4">
-      <div className="max-w-2xl mx-auto">
-        {/* Header */}
-        <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Organisation Profile</h1>
-            <p className="text-sm text-gray-500 mt-1">
-              Update your farm / organisation details — visible to your entire team
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="text-sm text-emerald-600 hover:text-emerald-700 font-medium"
-          >
-            ← Back
-          </button>
-        </div>
+    <div className="px-6 py-8">
+      <div className="mb-8">
+        <h1 className="text-lg font-semibold text-gray-800">Organisation</h1>
+        <p className="text-sm text-gray-400 mt-0.5">
+          Manage your organisation's farms, team members, and access control.
+        </p>
+      </div>
 
-        {/* Context card */}
-        {me && (
-          <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-5 py-4 mb-6 flex items-center gap-4">
-            <div className="w-10 h-10 rounded-full bg-emerald-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-              {me.first_name?.[0]?.toUpperCase() ?? "?"}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-4xl">
+        {/* Organisation info */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <h2 className="text-sm font-semibold text-gray-800 mb-4">Organisation Info</h2>
+          <div className="flex items-center gap-4 mb-5">
+            <div className="w-12 h-12 rounded-xl bg-emerald-600 flex items-center justify-center text-white font-bold text-lg shrink-0">
+              {me?.first_name?.[0]?.toUpperCase() ?? "?"}
             </div>
             <div>
-              <p className="text-sm font-semibold text-gray-800">
-                {me.first_name} {me.last_name}
-              </p>
-              <p className="text-xs text-gray-500">
-                Organisation ID: <span className="font-mono">{me.tenant_id}</span>
-              </p>
+              <p className="text-sm font-semibold text-gray-800">{me?.first_name} {me?.last_name}</p>
+              <p className="text-xs text-gray-400">Tenant ID: <span className="font-mono">{me?.tenant_id}</span></p>
+              <p className="text-xs text-gray-400">{me?.email}</p>
             </div>
           </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Organisation details */}
-          <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            <h2 className="text-base font-semibold text-gray-800 mb-5">
-              Location &amp; contact
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              <div>
-                <label
-                  htmlFor="country"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Country
-                </label>
-                <CountrySelect
-                  id="country"
-                  value={form.country}
-                  onChange={(country) => setForm({ ...form, country })}
-                />
-              </div>
-              <div>
-                <label
-                  htmlFor="address"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Farm address
-                </label>
-                <input
-                  id="address"
-                  name="address"
-                  type="text"
-                  value={form.address}
-                  onChange={handleChange}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                  placeholder="123 Farm Road, Ogun State"
-                />
-              </div>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between py-2 border-b border-gray-50">
+              <span className="text-xs text-gray-400 uppercase tracking-wide">Farms registered</span>
+              <span className="font-semibold text-gray-700">{farms.length}</span>
             </div>
-          </section>
-
-          {/* Farm details */}
-          <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            <h2 className="text-base font-semibold text-gray-800 mb-5">
-              Farm details
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              <div>
-                <label
-                  htmlFor="farm_size"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Farm size (hectares)
-                </label>
-                <input
-                  id="farm_size"
-                  name="farm_size"
-                  type="number"
-                  min="0"
-                  step="0.1"
-                  value={form.farm_size}
-                  onChange={handleChange}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                  placeholder="10.5"
-                />
-              </div>
-              <div>
-                <label
-                  htmlFor="crop_types_raw"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Crop types
-                  <span className="ml-1 text-gray-400 font-normal">(comma-separated)</span>
-                </label>
-                <input
-                  id="crop_types_raw"
-                  name="crop_types_raw"
-                  type="text"
-                  value={form.crop_types_raw}
-                  onChange={handleChange}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                  placeholder="maize, cassava, soybean"
-                />
-              </div>
+            <div className="flex justify-between py-2">
+              <span className="text-xs text-gray-400 uppercase tracking-wide">Account status</span>
+              <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">Active</span>
             </div>
+          </div>
+        </div>
 
-            {/* Crop chips preview */}
-            {form.crop_types_raw && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {form.crop_types_raw
-                  .split(",")
-                  .map((c) => c.trim())
-                  .filter(Boolean)
-                  .map((crop) => (
-                    <span
-                      key={crop}
-                      className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800"
-                    >
-                      {crop}
-                    </span>
+        {/* Quick links */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <h2 className="text-sm font-semibold text-gray-800 mb-4">Quick Links</h2>
+          <div className="space-y-2">
+            {[
+              { to: "/farm/add",        icon: "🌾", label: "Add a Farm",            desc: "Register a new farm to your organisation" },
+              { to: "/farm/management", icon: "🗺️", label: "Manage Farms",           desc: "View, edit, and delete your farms" },
+              { to: "/team",            icon: "👥", label: "Team Members",           desc: "Manage users and roles" },
+              { to: "/sensors/onboard", icon: "📡", label: "Add Sensor to Farm",    desc: "Onboard a new IoT sensor" },
+            ].map(link => (
+              <Link key={link.to} to={link.to}
+                className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 transition-colors group">
+                <span className="text-xl">{link.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-800 group-hover:text-emerald-700">{link.label}</p>
+                  <p className="text-xs text-gray-400">{link.desc}</p>
+                </div>
+                <svg className="w-4 h-4 text-gray-300 group-hover:text-emerald-500 transition-colors shrink-0"
+                  fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </Link>
+            ))}
+          </div>
+        </div>
+
+        {/* Farm–User assignments */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 lg:col-span-2">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-800">Farm Assignments</h2>
+              <p className="text-xs text-gray-400 mt-0.5">Sensors and team members are scoped per farm</p>
+            </div>
+            <Link to="/farm/add"
+              className="text-xs text-emerald-600 hover:text-emerald-700 font-medium border border-emerald-200 px-3 py-1.5 rounded-lg hover:bg-emerald-50 transition-colors">
+              + Add Farm
+            </Link>
+          </div>
+
+          {farms.length === 0 ? (
+            <div className="py-8 text-center">
+              <p className="text-sm text-gray-400">No farms registered yet.</p>
+              <Link to="/farm/add" className="mt-2 inline-block text-xs text-emerald-600 hover:text-emerald-700 font-medium">
+                Register your first farm →
+              </Link>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className="pb-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wide">Farm</th>
+                    <th className="pb-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wide">Type</th>
+                    <th className="pb-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wide">Size</th>
+                    <th className="pb-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wide">Crops</th>
+                    <th className="pb-2 text-right text-xs font-medium text-gray-400 uppercase tracking-wide">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {farms.map(farm => (
+                    <tr key={farm.farm_id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors">
+                      <td className="py-3">
+                        <Link to={`/farm/${farm.farm_id}`} className="text-sm font-medium text-gray-800 hover:text-emerald-700">
+                          {farm.farm_name}
+                        </Link>
+                      </td>
+                      <td className="py-3 text-xs text-gray-500 capitalize">
+                        {farm.farm_type?.replace("_", " ") ?? "—"}
+                      </td>
+                      <td className="py-3 text-xs text-gray-500">
+                        {farm.farm_size_ha ? `${farm.farm_size_ha} ha` : "—"}
+                      </td>
+                      <td className="py-3">
+                        {farm.crops && farm.crops.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {farm.crops.slice(0, 2).map(c => (
+                              <span key={c} className="text-xs bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded-full">{c}</span>
+                            ))}
+                            {farm.crops.length > 2 && <span className="text-xs text-gray-400">+{farm.crops.length - 2}</span>}
+                          </div>
+                        ) : <span className="text-gray-300 text-xs">—</span>}
+                      </td>
+                      <td className="py-3 text-right">
+                        <Link to={`/farm/${farm.farm_id}`}
+                          className="text-xs text-emerald-600 hover:text-emerald-700 font-medium">
+                          Manage →
+                        </Link>
+                      </td>
+                    </tr>
                   ))}
-              </div>
-            )}
-          </section>
-
-          {/* Actions */}
-          <div className="flex items-center justify-end gap-3">
-            <button
-              type="button"
-              onClick={() => navigate(-1)}
-              className="px-5 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSaving}
-              className="px-5 py-2.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 rounded-lg transition-colors"
-            >
-              {isSaving ? "Saving…" : "Save changes"}
-            </button>
-          </div>
-        </form>
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

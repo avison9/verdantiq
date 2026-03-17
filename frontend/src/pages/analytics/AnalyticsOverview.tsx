@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import usePageTitle from "../../hooks/usePageTitle";
 import { useGetMeQuery } from "../../redux/apislices/authApiSlice";
 import { useGetSensorsQuery, useGetSensorStorageListQuery } from "../../redux/apislices/userDashboardApiSlice";
@@ -12,25 +12,36 @@ const AnalyticsOverview = () => {
   usePageTitle("Analytics — VerdantIQ");
 
   const { data: me } = useGetMeQuery();
-  const { data: sensorsPage } = useGetSensorsQuery(
+  const { data: sensorsPage, refetch: refetchSensors } = useGetSensorsQuery(
     { tenant_id: me?.tenant_id ?? 0, per_page: 100 },
     { skip: !me, pollingInterval: 30_000 },
   );
   const { data: storageList } = useGetSensorStorageListQuery({});
   const [liveCounts, setLiveCounts] = useState<Record<string, number>>({});
+  const [refreshing, setRefreshing] = useState(false);
   const { storage_rate } = useBillingRates();
+  const fetchCountsRef = useRef<() => Promise<void>>();
 
   useEffect(() => {
-    const fetchCounts = () => {
-      fetch(`${DATA_SERVICE_URL}/sensors/message-counts`)
-        .then(r => r.json())
-        .then(data => setLiveCounts(data))
-        .catch(() => {});
+    const fetchCounts = async () => {
+      try {
+        const r = await fetch(`${DATA_SERVICE_URL}/sensors/message-counts`);
+        if (!r.ok) return;
+        const data = await r.json();
+        setLiveCounts(data);
+      } catch { /* ignore */ }
     };
+    fetchCountsRef.current = fetchCounts;
     fetchCounts();
     const id = setInterval(fetchCounts, 30_000);
     return () => clearInterval(id);
   }, []);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([refetchSensors(), fetchCountsRef.current?.()]);
+    setRefreshing(false);
+  };
 
   const sensors = sensorsPage?.items ?? [];
   const storageItems = storageList?.items ?? [];
@@ -53,9 +64,20 @@ const AnalyticsOverview = () => {
 
   return (
     <div className="px-6 py-8">
-      <div className="mb-8">
-        <h1 className="text-lg font-semibold text-gray-800">Analytics Overview</h1>
-        <p className="text-sm text-gray-400 mt-0.5">Storage and data insights from your IoT sensor network</p>
+      <div className="mb-8 flex items-start justify-between">
+        <div>
+          <h1 className="text-lg font-semibold text-gray-800">Analytics Overview</h1>
+          <p className="text-sm text-gray-400 mt-0.5">Storage and data insights from your IoT sensor network</p>
+        </div>
+        <button onClick={handleRefresh} disabled={refreshing}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-xs text-gray-500 hover:text-gray-700 hover:border-gray-300 transition-colors disabled:opacity-40"
+          title="Refresh storage data">
+          <svg className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          Refresh
+        </button>
       </div>
 
       {/* Quick stats grid */}
