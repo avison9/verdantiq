@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import usePageTitle from "../../hooks/usePageTitle";
 import { useGetMeQuery } from "../../redux/apislices/authApiSlice";
@@ -552,26 +552,35 @@ const SetupBilling = () => {
         <div className="space-y-4">
           {billing ? (
             <>
-              {/* Balance & Running Cost */}
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Current Balance</p>
-                    <p className="text-2xl font-bold text-gray-800">${balance.toFixed(2)}</p>
+              {/* Balance & Running Cost — side by side */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs text-gray-400 uppercase tracking-wide">Balance</p>
+                    <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full capitalize ${
+                      billing.status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500"
+                    }`}>
+                      {billing.status}
+                    </span>
                   </div>
-                  <span className={`text-xs font-semibold px-3 py-1 rounded-full capitalize ${
-                    billing.status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500"
-                  }`}>
-                    {billing.status}
-                  </span>
+                  <p className="text-2xl font-bold text-gray-800">${balance.toFixed(2)}</p>
                 </div>
-                <div className="border-t border-gray-50 pt-4">
-                  <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Running Cost</p>
-                  <p className="text-2xl font-bold text-purple-600">${totalCost.toFixed(4)}</p>
+                <Link to="/billing/running-cost"
+                  className="block bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4 hover:border-purple-200 hover:shadow-md transition-all group">
+                  <p className="text-xs text-gray-400 uppercase tracking-wide mb-2">Running Cost</p>
+                  <p className="text-2xl font-bold text-purple-600 group-hover:text-purple-700">
+                    ${totalCost.toFixed(4)}
+                  </p>
                   <p className="text-xs text-gray-400 mt-1">
                     {totalMessages.toLocaleString()} msgs × ${message_rate}/msg
                   </p>
-                </div>
+                  <p className="text-xs text-purple-500 mt-2 flex items-center gap-1 group-hover:gap-1.5 transition-all">
+                    View breakdown
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </p>
+                </Link>
               </div>
 
               {/* Suspension warnings */}

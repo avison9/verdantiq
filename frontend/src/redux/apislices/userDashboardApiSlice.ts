@@ -168,6 +168,7 @@ export interface SensorCreate {
   sensor_name: string;
   sensor_type: string;
   location?: string;
+  farm_id?: string;
   sensor_metadata?: Record<string, unknown>;
   manufacturer?: string;
   model?: string;

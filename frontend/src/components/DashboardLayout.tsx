@@ -266,6 +266,13 @@ const DashboardLayout = () => {
                   </svg>
                   Overview
                 </NavLink>
+                <NavLink to="/analytics/query" className={subLinkCls}>
+                  <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                  </svg>
+                  Query
+                </NavLink>
               </div>
             )}
           </div>
@@ -389,13 +396,6 @@ const DashboardLayout = () => {
                       d="M5 12h14M12 5l7 7-7 7" />
                   </svg>
                   Connections
-                </NavLink>
-                <NavLink to="/storage/query" className={subLinkCls}>
-                  <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                      d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                  </svg>
-                  Query
                 </NavLink>
               </div>
             )}
