@@ -29,6 +29,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
 import threading
 import time
 from pathlib import Path
@@ -69,17 +70,35 @@ _routes_lock = threading.Lock()
 _producer = Producer({
     "bootstrap.servers":        KAFKA_BROKERS,
     "enable.idempotence":       True,
-    "message.send.max.retries": 5,
-    "retry.backoff.ms":         200,
+    "message.send.max.retries": 10,
+    "retry.backoff.ms":         500,
     "linger.ms":                5,   # micro-batch for throughput
     "batch.size":               16384,
     "client.id":                "mqtt-kafka-bridge",
+    # Allow more time for broker recovery before giving up
+    "delivery.timeout.ms":      120000,
+    "request.timeout.ms":       30000,
 })
+
+# Track consecutive delivery failures — too many means the broker is down
+# and the producer is in a fatal state; exit so Docker restarts with a fresh one.
+_consecutive_failures = 0
+_MAX_CONSECUTIVE_FAILURES = 100
 
 
 def _delivery_report(err, msg):
+    global _consecutive_failures
     if err:
-        log.error("Kafka delivery failed: %s", err)
+        _consecutive_failures += 1
+        log.error("Kafka delivery failed (%d/%d): %s",
+                  _consecutive_failures, _MAX_CONSECUTIVE_FAILURES, err)
+        if _consecutive_failures >= _MAX_CONSECUTIVE_FAILURES:
+            log.critical("Kafka delivery failed %d times in a row — "
+                         "broker likely down, exiting for container restart",
+                         _MAX_CONSECUTIVE_FAILURES)
+            sys.exit(1)
+    else:
+        _consecutive_failures = 0  # reset on successful delivery
 
 
 # ── MQTT client ───────────────────────────────────────────────────────────────

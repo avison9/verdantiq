@@ -95,7 +95,11 @@ async def _flush_message_count(sensor_id: str, count: int) -> None:
 # ── Kafka admin client ────────────────────────────────────────────────────────
 
 def _get_admin() -> AdminClient:
-    return AdminClient({"bootstrap.servers": KAFKA_BROKERS})
+    return AdminClient({
+        "bootstrap.servers":  KAFKA_BROKERS,
+        "request.timeout.ms": 30000,
+        "socket.timeout.ms":  30000,
+    })
 
 
 def _create_kafka_topic(tenant_id: str, sensor_id: str) -> str:
