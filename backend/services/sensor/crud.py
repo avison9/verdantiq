@@ -397,3 +397,57 @@ def delete_sensor_storage(db: Session, tenant_id: int, storage_id: str) -> bool:
     db.delete(storage)
     db.commit()
     return True
+
+
+# ── Farm CRUD ─────────────────────────────────────────────────────────────────
+
+def create_farm(db: Session, tenant_id: int, data: schemas.FarmCreate) -> models.Farm:
+    farm = models.Farm(tenant_id=tenant_id, **data.model_dump(exclude_none=False))
+    db.add(farm)
+    db.commit()
+    db.refresh(farm)
+    return farm
+
+
+def get_farm(db: Session, tenant_id: int, farm_id: str) -> Optional[models.Farm]:
+    return db.query(models.Farm).filter(
+        models.Farm.farm_id == farm_id,
+        models.Farm.tenant_id == tenant_id,
+    ).first()
+
+
+def list_farms(
+    db: Session, tenant_id: int, page: int = 1, per_page: int = 20
+) -> schemas.FarmPage:
+    q = db.query(models.Farm).filter(models.Farm.tenant_id == tenant_id)
+    total = q.count()
+    items = q.order_by(models.Farm.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
+    return schemas.FarmPage(
+        items=items,
+        total=total,
+        page=page,
+        per_page=per_page,
+        pages=max(1, math.ceil(total / per_page)),
+    )
+
+
+def update_farm(
+    db: Session, tenant_id: int, farm_id: str, data: schemas.FarmUpdate
+) -> Optional[models.Farm]:
+    farm = get_farm(db, tenant_id, farm_id)
+    if not farm:
+        return None
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(farm, field, value)
+    db.commit()
+    db.refresh(farm)
+    return farm
+
+
+def delete_farm(db: Session, tenant_id: int, farm_id: str) -> bool:
+    farm = get_farm(db, tenant_id, farm_id)
+    if not farm:
+        return False
+    db.delete(farm)
+    db.commit()
+    return True

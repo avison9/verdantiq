@@ -22,4 +22,6 @@ export const APIendPoints = {
   billingRates: "billing-rates",
   // Storage
   storage: "storage",
+  // Farms
+  farms: "farms",
 };

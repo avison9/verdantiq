@@ -88,6 +88,9 @@ async def lifespan(app: FastAPI):
         conn.execute(text(
             "ALTER TABLE sensors ADD COLUMN IF NOT EXISTS storage_bytes BIGINT NOT NULL DEFAULT 0"
         ))
+        conn.execute(text(
+            "ALTER TABLE sensors ADD COLUMN IF NOT EXISTS farm_id VARCHAR(36)"
+        ))
         conn.commit()
 
     yield
@@ -456,6 +459,61 @@ async def internal_increment_messages(
     if updated:
         await notify_message_increment(updated.tenant_id, body.message_increment)
     return {"ok": True}
+
+
+@app.post("/farms/", response_model=schemas.FarmResponse, status_code=201)
+async def create_farm(
+    body: schemas.FarmCreate,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return crud.create_farm(db, current_user.tenant_id, body)
+
+
+@app.get("/farms/", response_model=schemas.FarmPage)
+async def list_farms(
+    page: int = Query(default=1, ge=1),
+    per_page: int = Query(default=20, ge=1, le=100),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return crud.list_farms(db, current_user.tenant_id, page, per_page)
+
+
+@app.get("/farms/{farm_id}", response_model=schemas.FarmResponse)
+async def get_farm(
+    farm_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    farm = crud.get_farm(db, current_user.tenant_id, farm_id)
+    if not farm:
+        raise HTTPException(status_code=404, detail="Farm not found")
+    return farm
+
+
+@app.patch("/farms/{farm_id}", response_model=schemas.FarmResponse)
+async def update_farm(
+    farm_id: str,
+    body: schemas.FarmUpdate,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    farm = crud.update_farm(db, current_user.tenant_id, farm_id, body)
+    if not farm:
+        raise HTTPException(status_code=404, detail="Farm not found")
+    return farm
+
+
+@app.delete("/farms/{farm_id}", status_code=204)
+async def delete_farm(
+    farm_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    deleted = crud.delete_farm(db, current_user.tenant_id, farm_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Farm not found")
 
 
 @app.get("/health")

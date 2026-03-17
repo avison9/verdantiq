@@ -29,6 +29,8 @@ class SensorResponse(BaseModel):
     sensor_metadata: Optional[dict] = None
     mqtt_token: str
     message_count: int
+    storage_bytes: int = 0
+    farm_id: Optional[str] = None
     status: SensorStatus
     last_message_at: Optional[datetime] = None
     created_at: datetime
@@ -129,6 +131,70 @@ class ConnectionEventCreate(BaseModel):
     status: str = "success"
     message: Optional[str] = None
     details: Optional[dict] = None
+
+
+class FarmCreate(BaseModel):
+    farm_name: str
+    address: Optional[str] = None
+    country: Optional[str] = None
+    farm_size_ha: Optional[float] = None
+    farm_type: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    perimeter_km: Optional[float] = None
+    crops: Optional[List[str]] = None
+    rainfall_avg_mm: Optional[float] = None
+    sunlight_avg_hrs: Optional[float] = None
+    soil_type: Optional[str] = None
+    crop_history: Optional[List[dict]] = None
+    notes: Optional[str] = None
+
+
+class FarmUpdate(BaseModel):
+    farm_name: Optional[str] = None
+    address: Optional[str] = None
+    country: Optional[str] = None
+    farm_size_ha: Optional[float] = None
+    farm_type: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    perimeter_km: Optional[float] = None
+    crops: Optional[List[str]] = None
+    rainfall_avg_mm: Optional[float] = None
+    sunlight_avg_hrs: Optional[float] = None
+    soil_type: Optional[str] = None
+    crop_history: Optional[List[dict]] = None
+    notes: Optional[str] = None
+
+
+class FarmResponse(BaseModel):
+    farm_id: str
+    tenant_id: int
+    farm_name: str
+    address: Optional[str] = None
+    country: Optional[str] = None
+    farm_size_ha: Optional[float] = None
+    farm_type: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    perimeter_km: Optional[float] = None
+    crops: Optional[List[str]] = None
+    rainfall_avg_mm: Optional[float] = None
+    sunlight_avg_hrs: Optional[float] = None
+    soil_type: Optional[str] = None
+    crop_history: Optional[List[dict]] = None
+    notes: Optional[str] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FarmPage(BaseModel):
+    items: List[FarmResponse]
+    total: int
+    page: int
+    per_page: int
+    pages: int
 
 
 class SensorStorageCreate(BaseModel):
