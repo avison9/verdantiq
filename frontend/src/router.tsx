@@ -79,7 +79,9 @@ export const router = createBrowserRouter([
           { path: "/storage/add",                          element: <StorageAdd /> },
           { path: "/storage/list",                         element: <StorageList /> },
           { path: "/storage/connections",                  element: <StorageConnections /> },
-          { path: "/storage/query",                        element: <StorageQuery /> },
+          // Query moved to Analytics
+          { path: "/analytics/query",                      element: <StorageQuery /> },
+          { path: "/storage/query",                        element: <Navigate to="/analytics/query" replace /> },
           { path: "/team",                                 element: <Team /> },
           { path: "/profile/user",                         element: <UserProfile /> },
           { path: "/profile/tenant",                       element: <TenantProfile /> },

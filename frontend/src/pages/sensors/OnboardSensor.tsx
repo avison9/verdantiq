@@ -22,54 +22,73 @@ const SENSOR_TYPES = [
   { value: "other",        label: "📡  Other" },
 ];
 
-// Animated sensor beacon (Feature 1)
-const SensorBeacon = () => (
-  <div className="relative flex items-center justify-center w-full h-full select-none pointer-events-none">
-    {/* Pulsing rings */}
-    <div className="absolute w-48 h-48 rounded-full bg-emerald-400/10 animate-ping" style={{ animationDuration: "2s" }} />
-    <div className="absolute w-36 h-36 rounded-full bg-emerald-400/15 animate-ping" style={{ animationDuration: "2.5s", animationDelay: "0.3s" }} />
-    <div className="absolute w-24 h-24 rounded-full bg-emerald-400/20 animate-ping" style={{ animationDuration: "3s", animationDelay: "0.6s" }} />
+// Multiple IoT sensor nodes animation
+const IOT_NODES = [
+  { type: "Temperature", icon: "🌡️", value: "24.5°C",   pingColor: "bg-rose-400/20",    cardColor: "border-rose-100 bg-rose-50/80",    textColor: "text-rose-600",    delay: "0s",    dur: "2s" },
+  { type: "Humidity",    icon: "💧", value: "68% RH",    pingColor: "bg-blue-400/20",    cardColor: "border-blue-100 bg-blue-50/80",    textColor: "text-blue-600",    delay: "0.3s",  dur: "2.4s" },
+  { type: "Soil",        icon: "🌱", value: "42% M",     pingColor: "bg-emerald-400/20", cardColor: "border-emerald-100 bg-emerald-50/80", textColor: "text-emerald-600", delay: "0.6s",  dur: "2.8s" },
+  { type: "Weather",     icon: "🌤️", value: "1013 hPa", pingColor: "bg-yellow-400/20",  cardColor: "border-yellow-100 bg-yellow-50/80",  textColor: "text-yellow-600",  delay: "0.2s",  dur: "2.2s" },
+  { type: "CO₂",         icon: "🌫️", value: "412 ppm",  pingColor: "bg-purple-400/20",  cardColor: "border-purple-100 bg-purple-50/80",  textColor: "text-purple-600",  delay: "0.8s",  dur: "3s" },
+  { type: "Flow",        icon: "💦", value: "2.4 L/s",  pingColor: "bg-cyan-400/20",    cardColor: "border-cyan-100 bg-cyan-50/80",    textColor: "text-cyan-600",    delay: "0.5s",  dur: "2.6s" },
+];
 
-    {/* Sensor icon */}
-    <div className="relative z-10 flex flex-col items-center gap-3">
-      <div className="w-16 h-16 bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg flex items-center justify-center border border-emerald-100">
-        <svg className="w-9 h-9 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-            d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.14 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
-        </svg>
-      </div>
+const IoTSensorGrid = () => (
+  <div className="relative w-full h-full select-none pointer-events-none p-4 flex flex-col gap-3">
+    {/* Background dot grid */}
+    <div className="absolute inset-0 opacity-[0.04]"
+      style={{ backgroundImage: "radial-gradient(circle, #059669 1px, transparent 1px)", backgroundSize: "20px 20px" }} />
 
-      {/* Data uplink animation */}
-      <div className="flex flex-col items-center gap-1 opacity-60">
-        {[0, 1, 2].map(i => (
-          <div key={i} className="w-0.5 h-3 bg-emerald-500 rounded-full animate-pulse"
-            style={{ animationDelay: `${i * 0.2}s`, opacity: 1 - i * 0.25 }} />
-        ))}
-      </div>
-
-      <p className="text-xs text-emerald-600 font-medium tracking-wide">IoT Sensor</p>
-
-      {/* Floating data packets */}
-      <div className="absolute top-0 right-0 translate-x-6 -translate-y-4">
-        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1 text-xs text-emerald-700 font-mono animate-bounce" style={{ animationDuration: "2s" }}>
-          24.5°C
-        </div>
-      </div>
-      <div className="absolute bottom-8 left-0 -translate-x-8">
-        <div className="bg-blue-50 border border-blue-200 rounded-lg px-2 py-1 text-xs text-blue-700 font-mono animate-bounce" style={{ animationDuration: "2.8s", animationDelay: "0.5s" }}>
-          68% RH
-        </div>
-      </div>
-      <div className="absolute top-8 left-0 -translate-x-10">
-        <div className="bg-purple-50 border border-purple-200 rounded-lg px-2 py-1 text-xs text-purple-700 font-mono animate-bounce" style={{ animationDuration: "3.2s", animationDelay: "1s" }}>
-          MQTT ↑
-        </div>
+    {/* MQTT uplink badge */}
+    <div className="absolute top-3 right-3 z-10">
+      <div className="flex items-center gap-1.5 bg-emerald-900/80 backdrop-blur-sm rounded-full px-2.5 py-1">
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+        <span className="text-[10px] text-emerald-300 font-mono font-medium">MQTT Live</span>
       </div>
     </div>
 
-    {/* Background grid */}
-    <div className="absolute inset-0 opacity-[0.03]"
-      style={{ backgroundImage: "radial-gradient(circle, #059669 1px, transparent 1px)", backgroundSize: "24px 24px" }} />
+    {/* Sensor node grid */}
+    <div className="relative z-10 grid grid-cols-2 gap-2.5 mt-6">
+      {IOT_NODES.map((node) => (
+        <div key={node.type} className="relative flex flex-col items-center">
+          {/* Ping ring */}
+          <div
+            className={`absolute inset-0 rounded-xl ${node.pingColor} animate-ping`}
+            style={{ animationDuration: node.dur, animationDelay: node.delay }}
+          />
+          {/* Card */}
+          <div className={`relative w-full border rounded-xl px-3 py-2.5 ${node.cardColor}`}>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-base leading-none">{node.icon}</span>
+              <span className={`text-[10px] font-semibold font-mono ${node.textColor} animate-pulse`}
+                style={{ animationDuration: node.dur, animationDelay: node.delay }}>
+                {node.value}
+              </span>
+            </div>
+            <p className="text-[10px] text-gray-400 font-medium">{node.type}</p>
+            {/* Mini data bars */}
+            <div className="flex gap-0.5 mt-1.5">
+              {[0.4, 0.7, 0.5, 0.9, 0.6, 0.8].map((h, i) => (
+                <div key={i}
+                  className={`flex-1 rounded-full ${node.textColor.replace("text-", "bg-")} opacity-40 animate-pulse`}
+                  style={{ height: `${h * 12}px`, animationDelay: `${i * 0.15 + parseFloat(node.delay)}s` }}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+
+    {/* MQTT connection lines (visual only) */}
+    <div className="absolute inset-x-0 bottom-4 flex justify-center z-10">
+      <div className="flex items-center gap-1 bg-white/60 backdrop-blur-sm border border-emerald-100 rounded-full px-3 py-1">
+        <svg className="w-3 h-3 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+            d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.14 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
+        </svg>
+        <span className="text-[10px] text-emerald-700 font-medium">6 sensors · Kafka streaming</span>
+      </div>
+    </div>
   </div>
 );
 
@@ -140,6 +159,7 @@ const OnboardSensor = () => {
         sensor_name: form.sensor_name.trim(),
         sensor_type: form.sensor_type,
         location: selectedFarm?.farm_name ?? undefined,
+        farm_id:  form.farm_id || undefined,
         sensor_metadata: Object.keys(sensor_metadata).length ? sensor_metadata : undefined,
         manufacturer:     form.manufacturer.trim()     || undefined,
         model:            form.model.trim()            || undefined,
@@ -325,9 +345,9 @@ const OnboardSensor = () => {
           </div>
         </div>
 
-        {/* Right: sensor beacon animation */}
-        <div className="hidden lg:flex flex-col items-center justify-center w-72 h-96 shrink-0 relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-50/80 via-white to-blue-50/40 border border-emerald-100/60">
-          <SensorBeacon />
+        {/* Right: IoT sensor grid animation */}
+        <div className="hidden lg:flex w-72 shrink-0 relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-50/80 via-white to-blue-50/40 border border-emerald-100/60" style={{ minHeight: "480px" }}>
+          <IoTSensorGrid />
         </div>
       </div>
     </div>

@@ -142,17 +142,16 @@ const Dashboard = () => {
           color="emerald"
         />
         <StatCard
-          label="Running Cost"
-          value={sensorsLoading ? "…" : `$${(totalMessages * message_rate).toFixed(4)}`}
-          sub="this billing cycle"
+          label="Messages Processed"
+          value={sensorsLoading ? "…" : totalMessages.toLocaleString()}
+          sub="total IoT messages"
           color="purple"
         />
         <StatCard
-          label="Billing status"
-          value={billing ? billing.status : "—"}
-          sub={billing ? `Balance $${(billing.balance ?? 0).toFixed(2)}` : "No billing set up"}
-          color={billing?.status === "active" ? "emerald" : "gray"}
-          badge={billing ? BILLING_STATUS_STYLES[billing.status] : undefined}
+          label="Message Cost"
+          value={sensorsLoading ? "…" : `$${(totalMessages * message_rate).toFixed(4)}`}
+          sub={`${totalMessages.toLocaleString()} msgs processed`}
+          color="purple"
         />
       </div>
 

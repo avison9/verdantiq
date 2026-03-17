@@ -15,7 +15,9 @@ const FarmDetail = () => {
     { skip: !me },
   );
 
-  const farmSensors = (sensorsPage?.items ?? []).filter(s => s.farm_id === farmId);
+  const farmSensors = (sensorsPage?.items ?? []).filter(
+    s => s.farm_id === farmId || String(s.sensor_metadata?.farm_id ?? "") === farmId
+  );
 
   const farmTypeLabel: Record<string, string> = {
     open_field: "Open Field",

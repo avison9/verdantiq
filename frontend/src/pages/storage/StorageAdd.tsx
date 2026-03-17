@@ -6,6 +6,7 @@ import { useGetMeQuery } from "../../redux/apislices/authApiSlice";
 import {
   useGetSensorsQuery,
   useGetBillingQuery,
+  useGetSensorStorageListQuery,
   useCreateSensorStorageMutation,
 } from "../../redux/apislices/userDashboardApiSlice";
 import { useBillingRates } from "../../hooks/useBillingRates";
@@ -20,6 +21,7 @@ const StorageAdd = () => {
     { tenant_id: me?.tenant_id ?? 0, per_page: 100 },
     { skip: !me },
   );
+  const { data: storageList, isLoading: storageLoading } = useGetSensorStorageListQuery({});
   const { storage_rate } = useBillingRates();
   const [createStorage, { isLoading }] = useCreateSensorStorageMutation();
 
@@ -45,11 +47,17 @@ const StorageAdd = () => {
   }
 
   const sensors = sensorsPage?.items ?? [];
+  const allocatedSensorIds = new Set((storageList?.items ?? []).map(s => s.sensor_id));
+  const availableSensors = sensors.filter(s => !allocatedSensorIds.has(s.sensor_id));
   const parsedGb = parseFloat(allocatedGb);
   const costPreview = !isNaN(parsedGb) && parsedGb > 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (allocatedSensorIds.has(selectedSensorId)) {
+      toast.error("This sensor already has a storage allocation.");
+      return;
+    }
     try {
       await createStorage({ sensor_id: selectedSensorId, allocated_gb: parseFloat(allocatedGb) }).unwrap();
       toast.success("Storage allocated successfully.");
@@ -76,11 +84,14 @@ const StorageAdd = () => {
               className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             >
               <option value="">— Select sensor —</option>
-              {sensors.map(s => (
+              {availableSensors.map(s => (
                 <option key={s.sensor_id} value={s.sensor_id}>
                   {s.sensor_name}
                 </option>
               ))}
+              {availableSensors.length === 0 && sensors.length > 0 && (
+                <option disabled value="">All sensors already have storage allocated</option>
+              )}
             </select>
           </div>
 
@@ -105,7 +116,7 @@ const StorageAdd = () => {
 
           <button
             type="submit"
-            disabled={!selectedSensorId || !allocatedGb || isLoading}
+            disabled={!selectedSensorId || !allocatedGb || isLoading || storageLoading}
             className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-colors"
           >
             {isLoading ? "Allocating…" : "Allocate Storage"}
