@@ -20,7 +20,7 @@ const AnalyticsOverview = () => {
   const [liveCounts, setLiveCounts] = useState<Record<string, number>>({});
   const [refreshing, setRefreshing] = useState(false);
   const { storage_rate } = useBillingRates();
-  const fetchCountsRef = useRef<() => Promise<void>>();
+  const fetchCountsRef = useRef<(() => Promise<void>) | undefined>(undefined);
 
   useEffect(() => {
     const fetchCounts = async () => {
