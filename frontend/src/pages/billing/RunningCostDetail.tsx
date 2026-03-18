@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import usePageTitle from "../../hooks/usePageTitle";
 import { useGetMeQuery } from "../../redux/apislices/authApiSlice";
-import { useGetSensorsQuery, useGetSensorStorageListQuery } from "../../redux/apislices/userDashboardApiSlice";
+import { useGetSensorsQuery } from "../../redux/apislices/userDashboardApiSlice";
 import { useBillingRates } from "../../hooks/useBillingRates";
 
 const DATA_SERVICE_URL = import.meta.env.VITE_DATA_SERVICE_URL ?? "http://localhost:8090";
@@ -16,7 +16,6 @@ const RunningCostDetail = () => {
     { tenant_id: me?.tenant_id ?? 0, per_page: 100 },
     { skip: !me, pollingInterval: 30_000 },
   );
-  const { data: storageList } = useGetSensorStorageListQuery({}, { pollingInterval: 30_000 });
   const { message_rate, storage_rate, query_rate } = useBillingRates();
   const [liveCounts, setLiveCounts] = useState<Record<string, number>>({});
 
@@ -38,7 +37,6 @@ const RunningCostDetail = () => {
   }, []);
 
   const sensors = sensorsPage?.items ?? [];
-  const storageItems = storageList?.items ?? [];
 
   // Per-sensor costs — storage cost based on ACTUAL bytes stored in MinIO/S3
   const sensorRows = sensors.map(s => {
