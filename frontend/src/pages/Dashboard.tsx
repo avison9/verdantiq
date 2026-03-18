@@ -15,6 +15,12 @@ const STATUS_STYLES: Record<string, string> = {
 };
 
 
+const BILLING_STATUS_STYLES: Record<string, string> = {
+  active:    "bg-emerald-100 text-emerald-700",
+  inactive:  "bg-gray-100 text-gray-500",
+  suspended: "bg-red-100 text-red-600",
+};
+
 const SENSOR_TYPE_ICONS: Record<string, string> = {
   temperature: "🌡️",
   humidity:    "💧",
@@ -143,10 +149,11 @@ const Dashboard = () => {
           color="purple"
         />
         <StatCard
-          label="Message Cost"
-          value={sensorsLoading ? "…" : `$${(totalMessages * message_rate).toFixed(4)}`}
-          sub={`${totalMessages.toLocaleString()} msgs processed`}
-          color="purple"
+          label="Billing status"
+          value={billing ? billing.status : "—"}
+          sub={billing ? `Balance $${(billing.balance ?? 0).toFixed(2)}` : "No billing set up"}
+          color={billing?.status === "active" ? "emerald" : "gray"}
+          badge={billing ? BILLING_STATUS_STYLES[billing.status] : undefined}
         />
       </div>
 
