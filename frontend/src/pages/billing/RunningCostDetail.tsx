@@ -14,32 +14,43 @@ const RunningCostDetail = () => {
   const { data: me } = useGetMeQuery();
   const { data: sensorsPage } = useGetSensorsQuery(
     { tenant_id: me?.tenant_id ?? 0, per_page: 100 },
-    { skip: !me },
+    { skip: !me, pollingInterval: 30_000 },
   );
-  const { data: storageList } = useGetSensorStorageListQuery({});
+  const { data: storageList } = useGetSensorStorageListQuery({}, { pollingInterval: 30_000 });
   const { message_rate, storage_rate, query_rate } = useBillingRates();
   const [liveCounts, setLiveCounts] = useState<Record<string, number>>({});
 
+  // Poll Kafka watermarks every 30 s for real-time message counts
   useEffect(() => {
-    fetch(`${DATA_SERVICE_URL}/sensors/message-counts`)
-      .then(r => r.json())
-      .then(data => setLiveCounts(data))
-      .catch(() => {});
+    const fetchCounts = async () => {
+      try {
+        const r = await fetch(`${DATA_SERVICE_URL}/sensors/message-counts`, {
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!r.ok) return;
+        const body = await r.json() as { counts: Record<string, number> };
+        setLiveCounts(prev => ({ ...prev, ...(body.counts ?? {}) }));
+      } catch { /* ignore */ }
+    };
+    fetchCounts();
+    const id = setInterval(fetchCounts, 30_000);
+    return () => clearInterval(id);
   }, []);
 
   const sensors = sensorsPage?.items ?? [];
   const storageItems = storageList?.items ?? [];
 
-  // Per-sensor costs
+  // Per-sensor costs — storage cost based on ACTUAL bytes stored in MinIO/S3
   const sensorRows = sensors.map(s => {
     const msgs = liveCounts[s.sensor_id] ?? s.message_count;
     const msgCost = msgs * message_rate;
+    // Actual bytes stored (from sensor record); fall back to estimate only if 0
     const storageBytes = s.storage_bytes > 0 ? s.storage_bytes : msgs * BYTES_PER_MSG;
     const storageGB = storageBytes / (1024 ** 3);
-    const alloc = storageItems.find(a => a.sensor_id === s.sensor_id);
-    const allocGB = alloc?.allocated_gb ?? 0;
-    const storageCost = allocGB * storage_rate;
-    return { sensor: s, msgs, msgCost, storageGB, storageCost, total: msgCost + storageCost };
+    const storageMB = storageBytes / (1024 ** 2);
+    // Cost based on actual data volume in MinIO/S3, not allocation
+    const storageCost = storageGB * storage_rate;
+    return { sensor: s, msgs, msgCost, storageMB, storageCost, total: msgCost + storageCost };
   });
 
   const totalMsgCost = sensorRows.reduce((s, r) => s + r.msgCost, 0);
@@ -67,7 +78,7 @@ const RunningCostDetail = () => {
             Setup Billing
           </Link>
           <h1 className="text-lg font-semibold text-gray-800">Running Cost Breakdown</h1>
-          <p className="text-sm text-gray-400 mt-0.5">Costs accrued since the last billing cycle</p>
+          <p className="text-sm text-gray-400 mt-0.5">Costs accrued since the last billing cycle · updates every 30 s</p>
         </div>
         <div className="text-right">
           <p className="text-xs text-gray-400 uppercase tracking-wide">Total</p>
@@ -89,7 +100,7 @@ const RunningCostDetail = () => {
           <p className="text-xl font-bold text-emerald-600">${totalStorageCost.toFixed(4)}</p>
           <p className="text-xs text-gray-400 mt-1">{pct(totalStorageCost)}% of total</p>
           <CostBar value={totalStorageCost} color="bg-emerald-500" />
-          <p className="text-xs text-gray-300 mt-2">@ ${storage_rate}/GB/mo</p>
+          <p className="text-xs text-gray-300 mt-2">@ ${storage_rate}/GB/mo · actual usage</p>
         </div>
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
           <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Queries</p>
@@ -102,8 +113,9 @@ const RunningCostDetail = () => {
 
       {/* Per-sensor breakdown */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm mb-6">
-        <div className="px-6 py-4 border-b border-gray-100">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
           <h2 className="text-base font-semibold text-gray-800">Per-Sensor Breakdown</h2>
+          <span className="text-xs text-gray-400">Live · 30 s interval</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -112,7 +124,7 @@ const RunningCostDetail = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wide">Sensor</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wide">Messages</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wide">Msg Cost</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wide">Storage (GB)</th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wide">Storage (MB)</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wide">Storage Cost</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wide">Total</th>
               </tr>
@@ -126,7 +138,12 @@ const RunningCostDetail = () => {
                   </td>
                   <td className="px-6 py-3 text-right tabular-nums text-gray-600">{row.msgs.toLocaleString()}</td>
                   <td className="px-6 py-3 text-right tabular-nums text-blue-600">${row.msgCost.toFixed(4)}</td>
-                  <td className="px-6 py-3 text-right tabular-nums text-gray-600">{row.storageGB.toFixed(4)}</td>
+                  <td className="px-6 py-3 text-right tabular-nums text-gray-600">
+                    {row.storageMB.toFixed(2)} MB
+                    {row.sensor.storage_bytes === 0 && (
+                      <span className="ml-1 text-gray-300 text-xs" title="Estimated: sensor.storage_bytes is 0">~</span>
+                    )}
+                  </td>
                   <td className="px-6 py-3 text-right tabular-nums text-emerald-600">${row.storageCost.toFixed(4)}</td>
                   <td className="px-6 py-3 text-right tabular-nums font-semibold text-gray-800">${row.total.toFixed(4)}</td>
                 </tr>
@@ -145,8 +162,12 @@ const RunningCostDetail = () => {
       <div className="bg-gray-50 rounded-xl border border-gray-100 px-5 py-4 text-xs text-gray-500 space-y-1">
         <p className="font-semibold text-gray-700 mb-2">Billing Rates</p>
         <p>Message processing: <span className="font-mono">${message_rate}</span> per message</p>
-        <p>Storage: <span className="font-mono">${storage_rate}</span> per GB per month (allocated)</p>
+        <p>Storage: <span className="font-mono">${storage_rate}</span> per GB per month — based on actual data stored in MinIO/S3</p>
         <p>Queries (Trino): <span className="font-mono">${query_rate}</span> per query — integration coming soon</p>
+        <p className="text-gray-400 pt-1">
+          Storage cost is derived from <code className="bg-gray-100 px-1 rounded">sensor.storage_bytes</code>.
+          A <span className="font-mono">~</span> indicator means the value is estimated (sensor has not reported bytes yet).
+        </p>
       </div>
     </div>
   );

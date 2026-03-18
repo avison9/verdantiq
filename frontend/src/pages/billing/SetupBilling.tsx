@@ -10,6 +10,7 @@ import {
   useUpdateBillingFrequencyMutation,
   useProcessBillingCycleMutation,
   useSuspendBillingMutation,
+  useUpdateSensorStatusMutation,
 } from "../../redux/apislices/userDashboardApiSlice";
 import { useBillingRates } from "../../hooks/useBillingRates";
 
@@ -391,6 +392,7 @@ const SetupBilling = () => {
   const [updateFrequency, { isLoading: freqLoading }] = useUpdateBillingFrequencyMutation();
   const [processCycle,    { isLoading: cycleLoading }] = useProcessBillingCycleMutation();
   const [suspendBilling]  = useSuspendBillingMutation();
+  const [updateSensorStatus] = useUpdateSensorStatusMutation();
 
   // Live message counts from Kafka watermarks
   const [liveCounts, setLiveCounts] = useState<Record<string, number>>({});
@@ -441,11 +443,26 @@ const SetupBilling = () => {
   //   • Sensors WITHOUT a budget: suspend tenant account when their combined cost > balance
   useEffect(() => {
     if (!billing || billing.status !== "active") return;
-    // Unbudgeted sensor cost exhausts the shared balance → suspend account
+    // Unbudgeted sensor cost exhausts the shared balance → suspend account and disconnect all sensors
     if (unbudgetedCost > 0 && balance > 0 && unbudgetedCost > balance) {
-      suspendBilling().then(() => {
+      suspendBilling().then(async () => {
         toast.error("Account suspended: unbudgeted sensor costs exceed your balance. Top up to restore access.");
         refetchBilling();
+        // Disconnect all active sensors from the network
+        const activeSensors = sensors.filter(s => s.status === "active");
+        for (const sensor of activeSensors) {
+          try {
+            await fetch(`${DATA_SERVICE_URL}/sensors/${sensor.tenant_id}/${sensor.sensor_id}/disconnect`, {
+              method: "DELETE",
+            });
+          } catch { /* pipeline may be offline */ }
+          try {
+            await updateSensorStatus({ sensor_id: sensor.sensor_id, status: "inactive" }).unwrap();
+          } catch { /* best effort */ }
+        }
+        if (activeSensors.length > 0) {
+          toast.warn(`${activeSensors.length} sensor${activeSensors.length > 1 ? "s" : ""} disconnected from the network.`);
+        }
       });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
