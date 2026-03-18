@@ -22,9 +22,25 @@ const SENSOR_TYPES = [
   { value: "other",        label: "📡  Other" },
 ];
 
-// Multiple IoT sensor nodes animation
-// Original sensor beacon — restored exactly
-const SensorBeacon = ({ d = 0 }: { d?: number }) => (
+// Per-beacon varied data packets
+interface BeaconValues { d?: number; v1: string; v2: string; v3: string; }
+
+const BEACON_VARIANTS: BeaconValues[] = [
+  { d: 0.0, v1: "24.5°C",   v2: "68% RH",   v3: "MQTT ↑"  },
+  { d: 0.4, v1: "412 ppm",  v2: "1013 hPa", v3: "CO₂ ↑"   },
+  { d: 0.8, v1: "42% VWC",  v2: "5.6 pH",   v3: "Soil ↑"  },
+  { d: 1.2, v1: "850 µmol", v2: "UV: 3.2",  v3: "Light ↑" },
+  // center top
+  { d: 0.6, v1: "2.4 L/s",  v2: "Flow ↑",   v3: "MQTT ↑"  },
+  { d: 0.2, v1: "19.2°C",   v2: "82% RH",   v3: "MQTT ↑"  },
+  { d: 0.6, v1: "12 km/h",  v2: "N 47°",    v3: "Wind ↑"  },
+  { d: 1.0, v1: "0.8 bar",  v2: "22.1°C",   v3: "Press ↑" },
+  { d: 1.4, v1: "385 ppm",  v2: "78% RH",   v3: "Env ↑"   },
+  // center bottom
+  { d: 0.9, v1: "31.7°C",   v2: "55% RH",   v3: "MQTT ↑"  },
+];
+
+const SensorBeacon = ({ d = 0, v1, v2, v3 }: BeaconValues) => (
   <div className="relative flex items-center justify-center w-full h-full select-none pointer-events-none">
     {/* Pulsing rings */}
     <div className="absolute w-48 h-48 rounded-full bg-emerald-400/10 animate-ping"
@@ -53,23 +69,23 @@ const SensorBeacon = ({ d = 0 }: { d?: number }) => (
 
       <p className="text-xs text-emerald-600 font-medium tracking-wide">IoT Sensor</p>
 
-      {/* Floating data packets */}
+      {/* Floating data packets — unique per beacon */}
       <div className="absolute top-0 right-0 translate-x-6 -translate-y-4">
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1 text-xs text-emerald-700 font-mono animate-bounce"
           style={{ animationDuration: "2s", animationDelay: `${d}s` }}>
-          24.5°C
+          {v1}
         </div>
       </div>
       <div className="absolute bottom-8 left-0 -translate-x-8">
         <div className="bg-blue-50 border border-blue-200 rounded-lg px-2 py-1 text-xs text-blue-700 font-mono animate-bounce"
           style={{ animationDuration: "2.8s", animationDelay: `${d + 0.5}s` }}>
-          68% RH
+          {v2}
         </div>
       </div>
       <div className="absolute top-8 left-0 -translate-x-10">
         <div className="bg-purple-50 border border-purple-200 rounded-lg px-2 py-1 text-xs text-purple-700 font-mono animate-bounce"
           style={{ animationDuration: "3.2s", animationDelay: `${d + 1}s` }}>
-          MQTT ↑
+          {v3}
         </div>
       </div>
     </div>
@@ -333,14 +349,33 @@ const OnboardSensor = () => {
           </div>
         </div>
 
-        {/* Right: tiled sensor beacons — covers full remaining space */}
+        {/* Right: tiled sensor beacons — 8 beacons + 2 centered middle beacons */}
         <div className="hidden lg:flex flex-1 relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-50/80 via-white to-blue-50/40 border border-emerald-100/60">
-          <div className="absolute inset-0 grid grid-cols-2" style={{ gridAutoRows: "288px" }}>
-            {[0, 0.4, 0.8, 1.2, 0.2, 0.6, 1.0, 1.4].map((d, i) => (
+          <div className="absolute inset-0 overflow-y-hidden grid grid-cols-2" style={{ gridAutoRows: "240px" }}>
+            {/* Top 4 beacons */}
+            {BEACON_VARIANTS.slice(0, 4).map((bv, i) => (
               <div key={i} className="relative overflow-hidden">
-                <SensorBeacon d={d} />
+                <SensorBeacon {...bv} />
               </div>
             ))}
+            {/* Center beacon between top 4 and bottom 4 */}
+            <div className="relative overflow-hidden col-span-2 flex items-center justify-center" style={{ height: "240px" }}>
+              <div className="relative w-1/2 h-full">
+                <SensorBeacon {...BEACON_VARIANTS[4]} />
+              </div>
+            </div>
+            {/* Bottom 4 beacons */}
+            {BEACON_VARIANTS.slice(5, 9).map((bv, i) => (
+              <div key={i + 5} className="relative overflow-hidden">
+                <SensorBeacon {...bv} />
+              </div>
+            ))}
+            {/* Center beacon after bottom 4 */}
+            <div className="relative overflow-hidden col-span-2 flex items-center justify-center" style={{ height: "240px" }}>
+              <div className="relative w-1/2 h-full">
+                <SensorBeacon {...BEACON_VARIANTS[9]} />
+              </div>
+            </div>
           </div>
         </div>
       </div>

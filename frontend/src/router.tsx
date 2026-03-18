@@ -17,6 +17,8 @@ import SetupBilling from "./pages/billing/SetupBilling";
 import Transactions from "./pages/billing/Transactions";
 import SensorBudget from "./pages/billing/SensorBudget";
 import AnalyticsOverview from "./pages/analytics/AnalyticsOverview";
+import AnalyticsAI from "./pages/analytics/AnalyticsAI";
+import StorageOverview from "./pages/storage/StorageOverview";
 import FarmAdd from "./pages/farm/FarmAdd";
 import FarmList from "./pages/farm/FarmList";
 import FarmDetail from "./pages/farm/FarmDetail";
@@ -24,7 +26,6 @@ import RunningCostDetail from "./pages/billing/RunningCostDetail";
 import Team from "./pages/team/Team";
 import StorageAdd from "./pages/storage/StorageAdd";
 import StorageList from "./pages/storage/StorageList";
-import StorageConnections from "./pages/storage/StorageConnections";
 import StorageQuery from "./pages/storage/StorageQuery";
 import Login from "./pages/authentication/Login";
 import Register from "./pages/authentication/Register";
@@ -73,12 +74,15 @@ export const router = createBrowserRouter([
           // Analytics sub-pages
           { path: "/analytics",                            element: <Navigate to="/analytics/overview" replace /> },
           { path: "/analytics/overview",                   element: <AnalyticsOverview /> },
+          { path: "/analytics/ai",                         element: <AnalyticsAI /> },
           // Billing detail
           { path: "/billing/running-cost",                 element: <RunningCostDetail /> },
           // Storage sub-pages
+          { path: "/storage",                              element: <Navigate to="/storage/overview" replace /> },
+          { path: "/storage/overview",                     element: <StorageOverview /> },
           { path: "/storage/add",                          element: <StorageAdd /> },
           { path: "/storage/list",                         element: <StorageList /> },
-          { path: "/storage/connections",                  element: <StorageConnections /> },
+          { path: "/storage/connections",                  element: <Navigate to="/storage/overview" replace /> },
           // Query moved to Analytics
           { path: "/analytics/query",                      element: <StorageQuery /> },
           { path: "/storage/query",                        element: <Navigate to="/analytics/query" replace /> },
