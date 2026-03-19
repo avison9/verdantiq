@@ -385,7 +385,7 @@ function SecurityNote() {
 
 const SetupBilling = () => {
   usePageTitle("Setup Billing — VerdantIQ");
-  const { message_rate, storage_rate, query_rate } = useBillingRates();
+  const { message_rate, storage_rate } = useBillingRates();
   const { data: me }                 = useGetMeQuery();
   const { data: billing, refetch: refetchBilling } = useGetBillingQuery();
   const { data: sensorsPage }        = useGetSensorsQuery(
@@ -515,7 +515,9 @@ const SetupBilling = () => {
         } catch { /* best effort */ }
         // Clear the billing_suspended flag so the sensor behaves normally going forward
         try {
-          const { billing_suspended: _, ...restMeta } = sensor.sensor_metadata ?? {};
+          const restMeta = Object.fromEntries(
+            Object.entries(sensor.sensor_metadata ?? {}).filter(([k]) => k !== "billing_suspended"),
+          );
           await updateSensor({ sensor_id: sensor.sensor_id, sensor_metadata: restMeta }).unwrap();
         } catch { /* best effort */ }
         // Log reconnection event
