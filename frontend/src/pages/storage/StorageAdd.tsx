@@ -110,7 +110,7 @@ const StorageAdd = () => {
 
           {costPreview && (
             <p className="text-sm text-purple-600">
-              Estimated monthly cost: ${(parsedGb * storage_rate).toFixed(4)}
+              Estimated monthly cost: ${(parsedGb * storage_rate).toFixed(2)}
             </p>
           )}
 

@@ -24,4 +24,6 @@ export const APIendPoints = {
   storage: "storage",
   // Farms
   farms: "farms",
+  // Crop Management
+  cropManagement: "crop-management",
 };

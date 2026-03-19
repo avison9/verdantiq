@@ -287,11 +287,9 @@ const FarmAdd = () => {
         <p className="text-sm text-gray-400 mt-0.5">Add a farm to your organisation. Sensors can be assigned to farms.</p>
       </div>
 
-      {/* Two-column layout: form left, farm animation right */}
+      {/* Two-column layout: form left, animation right */}
       <div className="flex gap-8 items-start">
-
-      {/* Left: form */}
-      <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0">
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Basic Info */}
         <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-4">
@@ -472,37 +470,33 @@ const FarmAdd = () => {
           </button>
         </div>
       </form>
-      </div>{/* end left */}
+        </div>{/* end form col */}
 
-      {/* Right: farm tile animations */}
-      <div className="hidden lg:flex w-[420px] flex-shrink-0 relative overflow-hidden rounded-3xl bg-gradient-to-br from-green-50/80 via-white to-amber-50/40 border border-green-100/60" style={{ minHeight: "calc(100vh - 160px)" }}>
-        <div className="absolute inset-0 overflow-y-hidden grid grid-cols-2" style={{ gridAutoRows: "220px" }}>
-          {/* Top 4 farm tiles */}
-          {FARM_TILES.slice(0, 4).map((tile, i) => (
-            <div key={i} className="relative overflow-hidden">
-              <FarmTile {...tile} />
+        {/* Right: farm tile animations — same flex-1 width as form col */}
+        <div className="hidden lg:flex flex-1 sticky top-8 self-start overflow-hidden rounded-3xl bg-gradient-to-br from-green-50/80 via-white to-amber-50/40 border border-green-100/60" style={{ height: "calc(100vh - 120px)" }}>
+          <div className="absolute inset-0 overflow-hidden grid grid-cols-2" style={{ gridAutoRows: "220px" }}>
+            {FARM_TILES.slice(0, 4).map((tile, i) => (
+              <div key={i} className="relative overflow-hidden">
+                <FarmTile {...tile} />
+              </div>
+            ))}
+            <div className="relative overflow-hidden col-span-2 flex items-center justify-center" style={{ height: "220px" }}>
+              <div className="relative w-1/2 h-full">
+                <FarmTile {...FARM_TILES[4]} />
+              </div>
             </div>
-          ))}
-          {/* Center tile — middle of top 4 */}
-          <div className="relative overflow-hidden col-span-2 flex items-center justify-center" style={{ height: "220px" }}>
-            <div className="relative w-1/2 h-full">
-              <FarmTile {...FARM_TILES[4]} />
-            </div>
-          </div>
-          {/* Bottom 4 farm tiles */}
-          {FARM_TILES.slice(5, 9).map((tile, i) => (
-            <div key={i + 5} className="relative overflow-hidden">
-              <FarmTile {...tile} />
-            </div>
-          ))}
-          {/* Center tile — middle of bottom 4 */}
-          <div className="relative overflow-hidden col-span-2 flex items-center justify-center" style={{ height: "220px" }}>
-            <div className="relative w-1/2 h-full">
-              <FarmTile {...FARM_TILES[9]} />
+            {FARM_TILES.slice(5, 9).map((tile, i) => (
+              <div key={i + 5} className="relative overflow-hidden">
+                <FarmTile {...tile} />
+              </div>
+            ))}
+            <div className="relative overflow-hidden col-span-2 flex items-center justify-center" style={{ height: "220px" }}>
+              <div className="relative w-1/2 h-full">
+                <FarmTile {...FARM_TILES[9]} />
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
       </div>{/* end two-column */}
     </div>

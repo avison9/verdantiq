@@ -22,6 +22,8 @@ import StorageOverview from "./pages/storage/StorageOverview";
 import FarmAdd from "./pages/farm/FarmAdd";
 import FarmList from "./pages/farm/FarmList";
 import FarmDetail from "./pages/farm/FarmDetail";
+import CropManagementList from "./pages/farm/CropManagementList";
+import CropDetail from "./pages/farm/CropDetail";
 import RunningCostDetail from "./pages/billing/RunningCostDetail";
 import Team from "./pages/team/Team";
 import StorageAdd from "./pages/storage/StorageAdd";
@@ -70,6 +72,8 @@ export const router = createBrowserRouter([
           // Farm sub-pages
           { path: "/farm/add",                             element: <FarmAdd /> },
           { path: "/farm/management",                      element: <FarmList /> },
+          { path: "/farm/crops",                           element: <CropManagementList /> },
+          { path: "/farm/crops/:cropId",                   element: <CropDetail /> },
           { path: "/farm/:farmId",                         element: <FarmDetail /> },
           // Analytics sub-pages
           { path: "/analytics",                            element: <Navigate to="/analytics/overview" replace /> },

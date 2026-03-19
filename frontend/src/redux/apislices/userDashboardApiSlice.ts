@@ -237,6 +237,48 @@ export interface TransactionPage {
   pages: number;
 }
 
+export interface CropManagement {
+  id: string;
+  farm_id: string;
+  tenant_id: number;
+  crop_name: string;
+  area_ha: number | null;
+  grain_type: string | null;
+  grains_planted: number | null;
+  planting_date: string | null;
+  expected_harvest_date: string | null;
+  notes: string | null;
+  avg_sunlight_hrs: number | null;
+  soil_ph: number | null;
+  soil_humidity: number | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface CropManagementPage {
+  items: CropManagement[];
+  total: number;
+  page: number;
+  per_page: number;
+  pages: number;
+}
+
+export interface CropManagementCreate {
+  farm_id: string;
+  crop_name: string;
+  area_ha?: number;
+  grain_type?: string;
+  grains_planted?: number;
+  planting_date?: string;
+  expected_harvest_date?: string;
+  notes?: string;
+  avg_sunlight_hrs?: number;
+  soil_ph?: number;
+  soil_humidity?: number;
+}
+
+export type CropManagementUpdate = Partial<Omit<CropManagementCreate, "farm_id">>;
+
 export const userDashboardApiSlice = baseApiSlice.injectEndpoints({
   endpoints: (builder) => ({
     getSensors: builder.query<SensorPage, { tenant_id: number; page?: number; per_page?: number }>({
@@ -335,10 +377,11 @@ export const userDashboardApiSlice = baseApiSlice.injectEndpoints({
         `${APIendPoints.billingTransactions}/?page=${page}&per_page=${per_page}`,
       providesTags: ["Transaction"],
     }),
-    suspendBilling: builder.mutation<Billing, void>({
-      query: () => ({
+    suspendBilling: builder.mutation<Billing, { amount_due: number }>({
+      query: (body) => ({
         url: `${APIendPoints.billingSuspend}`,
         method: "POST",
+        body,
       }),
       invalidatesTags: ["Billing"],
     }),
@@ -422,6 +465,41 @@ export const userDashboardApiSlice = baseApiSlice.injectEndpoints({
       }),
       invalidatesTags: ["Farm"],
     }),
+    getCrops: builder.query<CropManagementPage, { farm_id?: string; page?: number; per_page?: number }>({
+      query: ({ farm_id, page = 1, per_page = 50 } = {}) => {
+        const params = new URLSearchParams({ page: String(page), per_page: String(per_page) });
+        if (farm_id) params.set("farm_id", farm_id);
+        return `${APIendPoints.cropManagement}/?${params}`;
+      },
+      providesTags: ["Farm"],
+    }),
+    getCrop: builder.query<CropManagement, string>({
+      query: (crop_id) => `${APIendPoints.cropManagement}/${crop_id}`,
+      providesTags: ["Farm"],
+    }),
+    createCrop: builder.mutation<CropManagement, CropManagementCreate>({
+      query: (body) => ({
+        url: `${APIendPoints.cropManagement}/`,
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["Farm"],
+    }),
+    updateCrop: builder.mutation<CropManagement, { id: string } & CropManagementUpdate>({
+      query: ({ id, ...body }) => ({
+        url: `${APIendPoints.cropManagement}/${id}`,
+        method: "PATCH",
+        body,
+      }),
+      invalidatesTags: ["Farm"],
+    }),
+    deleteCrop: builder.mutation<void, string>({
+      query: (id) => ({
+        url: `${APIendPoints.cropManagement}/${id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: ["Farm"],
+    }),
   }),
 });
 
@@ -453,4 +531,9 @@ export const {
   useCreateFarmMutation,
   useUpdateFarmMutation,
   useDeleteFarmMutation,
+  useGetCropsQuery,
+  useGetCropQuery,
+  useCreateCropMutation,
+  useUpdateCropMutation,
+  useDeleteCropMutation,
 } = userDashboardApiSlice;
