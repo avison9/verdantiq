@@ -290,7 +290,7 @@ const Dashboard = () => {
               <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Running Cost</p>
               <Link to="/billing/running-cost" className="block">
                 <p className="text-xl font-bold text-purple-600 hover:text-purple-700 transition-colors">
-                  ${(totalMessages * message_rate).toFixed(4)}
+                  ${(totalMessages * message_rate).toFixed(2)}
                 </p>
               </Link>
             </div>

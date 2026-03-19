@@ -44,10 +44,10 @@ const RunningCostDetail = () => {
     const msgCost = msgs * message_rate;
     // Actual bytes stored (from sensor record); fall back to estimate only if 0
     const storageBytes = s.storage_bytes > 0 ? s.storage_bytes : msgs * BYTES_PER_MSG;
-    const storageGB = storageBytes / (1024 ** 3);
+    const storageKB = storageBytes / 1024;
     const storageMB = storageBytes / (1024 ** 2);
-    // Cost based on actual data volume in MinIO/S3, not allocation
-    const storageCost = storageGB * storage_rate;
+    // Cost calculated from KB: storage_rate is $/GB = $/(1024*1024 KB)
+    const storageCost = storageKB * (storage_rate / (1024 * 1024));
     return { sensor: s, msgs, msgCost, storageMB, storageCost, total: msgCost + storageCost };
   });
 
@@ -80,7 +80,7 @@ const RunningCostDetail = () => {
         </div>
         <div className="text-right">
           <p className="text-xs text-gray-400 uppercase tracking-wide">Total</p>
-          <p className="text-2xl font-bold text-purple-600">${grandTotal.toFixed(4)}</p>
+          <p className="text-2xl font-bold text-purple-600">${grandTotal.toFixed(2)}</p>
         </div>
       </div>
 
@@ -88,21 +88,21 @@ const RunningCostDetail = () => {
       <div className="grid grid-cols-3 gap-4 mb-8">
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
           <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Messages</p>
-          <p className="text-xl font-bold text-blue-600">${totalMsgCost.toFixed(4)}</p>
+          <p className="text-xl font-bold text-blue-600">${totalMsgCost.toFixed(2)}</p>
           <p className="text-xs text-gray-400 mt-1">{pct(totalMsgCost)}% of total</p>
           <CostBar value={totalMsgCost} color="bg-blue-500" />
           <p className="text-xs text-gray-300 mt-2">@ ${message_rate}/msg</p>
         </div>
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
           <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Storage</p>
-          <p className="text-xl font-bold text-emerald-600">${totalStorageCost.toFixed(4)}</p>
+          <p className="text-xl font-bold text-emerald-600">${totalStorageCost.toFixed(2)}</p>
           <p className="text-xs text-gray-400 mt-1">{pct(totalStorageCost)}% of total</p>
           <CostBar value={totalStorageCost} color="bg-emerald-500" />
           <p className="text-xs text-gray-300 mt-2">@ ${storage_rate}/GB/mo · actual usage</p>
         </div>
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
           <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Queries</p>
-          <p className="text-xl font-bold text-purple-600">${totalQueryCost.toFixed(4)}</p>
+          <p className="text-xl font-bold text-purple-600">${totalQueryCost.toFixed(2)}</p>
           <p className="text-xs text-gray-400 mt-1">{pct(totalQueryCost)}% of total</p>
           <CostBar value={totalQueryCost} color="bg-purple-500" />
           <p className="text-xs text-gray-300 mt-2">@ ${query_rate}/query</p>
@@ -135,15 +135,15 @@ const RunningCostDetail = () => {
                     <p className="text-xs text-gray-400 capitalize">{row.sensor.sensor_type}</p>
                   </td>
                   <td className="px-6 py-3 text-right tabular-nums text-gray-600">{row.msgs.toLocaleString()}</td>
-                  <td className="px-6 py-3 text-right tabular-nums text-blue-600">${row.msgCost.toFixed(4)}</td>
+                  <td className="px-6 py-3 text-right tabular-nums text-blue-600">${row.msgCost.toFixed(2)}</td>
                   <td className="px-6 py-3 text-right tabular-nums text-gray-600">
                     {row.storageMB.toFixed(2)} MB
                     {row.sensor.storage_bytes === 0 && (
                       <span className="ml-1 text-gray-300 text-xs" title="Estimated: sensor.storage_bytes is 0">~</span>
                     )}
                   </td>
-                  <td className="px-6 py-3 text-right tabular-nums text-emerald-600">${row.storageCost.toFixed(4)}</td>
-                  <td className="px-6 py-3 text-right tabular-nums font-semibold text-gray-800">${row.total.toFixed(4)}</td>
+                  <td className="px-6 py-3 text-right tabular-nums text-emerald-600">${row.storageCost.toFixed(2)}</td>
+                  <td className="px-6 py-3 text-right tabular-nums font-semibold text-gray-800">${row.total.toFixed(2)}</td>
                 </tr>
               ))}
               {sensors.length === 0 && (

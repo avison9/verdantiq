@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
-from typing import List
+from typing import List, Optional
 import httpx
 import trino.exceptions
 import models
@@ -91,6 +91,26 @@ async def lifespan(app: FastAPI):
         conn.execute(text(
             "ALTER TABLE sensors ADD COLUMN IF NOT EXISTS farm_id VARCHAR(36)"
         ))
+        # 5. Create crop_management table if missing
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS crop_management (
+                id VARCHAR(36) PRIMARY KEY,
+                farm_id VARCHAR(36) NOT NULL REFERENCES farms(farm_id) ON DELETE CASCADE,
+                tenant_id INTEGER NOT NULL,
+                crop_name VARCHAR(100) NOT NULL,
+                area_ha FLOAT,
+                grain_type VARCHAR(100),
+                grains_planted INTEGER,
+                planting_date DATE,
+                expected_harvest_date DATE,
+                notes VARCHAR(1000),
+                avg_sunlight_hrs FLOAT,
+                soil_ph FLOAT,
+                soil_humidity FLOAT,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMP
+            )
+        """))
         conn.commit()
 
     yield
@@ -514,6 +534,62 @@ async def delete_farm(
     deleted = crud.delete_farm(db, current_user.tenant_id, farm_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Farm not found")
+
+
+@app.post("/crop-management/", response_model=schemas.CropManagementResponse, status_code=201)
+async def create_crop(
+    body: schemas.CropManagementCreate,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return crud.create_crop(db, current_user.tenant_id, body)
+
+
+@app.get("/crop-management/", response_model=schemas.CropManagementPage)
+async def list_crops(
+    farm_id: Optional[str] = None,
+    page: int = Query(default=1, ge=1),
+    per_page: int = Query(default=50, ge=1, le=200),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return crud.list_crops(db, current_user.tenant_id, farm_id, page, per_page)
+
+
+@app.get("/crop-management/{crop_id}", response_model=schemas.CropManagementResponse)
+async def get_crop(
+    crop_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    crop = crud.get_crop(db, current_user.tenant_id, crop_id)
+    if not crop:
+        raise HTTPException(status_code=404, detail="Crop not found")
+    return crop
+
+
+@app.patch("/crop-management/{crop_id}", response_model=schemas.CropManagementResponse)
+async def update_crop(
+    crop_id: str,
+    body: schemas.CropManagementUpdate,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    crop = crud.update_crop(db, current_user.tenant_id, crop_id, body)
+    if not crop:
+        raise HTTPException(status_code=404, detail="Crop not found")
+    return crop
+
+
+@app.delete("/crop-management/{crop_id}", status_code=204)
+async def delete_crop(
+    crop_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    deleted = crud.delete_crop(db, current_user.tenant_id, crop_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Crop not found")
 
 
 @app.get("/health")

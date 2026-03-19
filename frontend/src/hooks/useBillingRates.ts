@@ -3,7 +3,7 @@ import { useGetBillingRatesQuery } from "../redux/apislices/userDashboardApiSlic
 // Fallback defaults match the backend model defaults
 const DEFAULTS = {
   message_rate: 0.0005,
-  storage_rate: 0.10,
+  storage_rate: 0.50,
   query_rate:   0.001,
 };
 

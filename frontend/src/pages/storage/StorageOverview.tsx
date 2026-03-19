@@ -27,8 +27,8 @@ const StorageOverview = () => {
       try {
         const r = await fetch(`${DATA_SERVICE_URL}/sensors/message-counts`);
         if (!r.ok) return;
-        const data = await r.json();
-        setLiveCounts(data);
+        const body = await r.json() as { counts: Record<string, number> };
+        setLiveCounts(prev => ({ ...prev, ...(body.counts ?? {}) }));
       } catch { /* ignore */ }
     };
     fetchCountsRef.current = fetchCounts;
@@ -193,7 +193,7 @@ const StorageOverview = () => {
                       }`}>{s.status}</span>
                     </td>
                     <td className="px-6 py-3 text-sm text-gray-700 tabular-nums">
-                      {usedBytes > 0 ? "$" + (usedGB * storage_rate).toFixed(4) : "—"}
+                      {usedBytes > 0 ? "$" + (usedGB * storage_rate).toFixed(2) : "—"}
                     </td>
                   </tr>
                 );

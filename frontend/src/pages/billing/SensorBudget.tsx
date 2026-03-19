@@ -85,7 +85,7 @@ function BudgetRow({
         </div>
       </td>
       <td className="px-6 py-4 text-sm font-semibold text-purple-600 text-right">
-        ${runningCost.toFixed(4)}
+        ${runningCost.toFixed(2)}
       </td>
       <td className="px-6 py-4 text-right">
         {budgetNum !== null ? (
@@ -249,7 +249,7 @@ const SensorBudget = () => {
         </div>
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4">
           <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Total Cost (all sensors)</p>
-          <p className="text-xl font-bold text-purple-600">${totalCost.toFixed(4)}</p>
+          <p className="text-xl font-bold text-purple-600">${totalCost.toFixed(2)}</p>
         </div>
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4">
           <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Sensors</p>

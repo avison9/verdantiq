@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import usePageTitle from "../../hooks/usePageTitle";
@@ -11,10 +11,13 @@ import {
   useProcessBillingCycleMutation,
   useSuspendBillingMutation,
   useUpdateSensorStatusMutation,
+  useUpdateSensorMutation,
+  useLogConnectionEventMutation,
 } from "../../redux/apislices/userDashboardApiSlice";
 import { useBillingRates } from "../../hooks/useBillingRates";
 
 const DATA_SERVICE_URL = import.meta.env.VITE_DATA_SERVICE_URL ?? "http://localhost:8090";
+const BYTES_PER_MSG = 300;
 
 // ── Payment method catalogue ─────────────────────────────────────────────────
 
@@ -382,7 +385,7 @@ function SecurityNote() {
 
 const SetupBilling = () => {
   usePageTitle("Setup Billing — VerdantIQ");
-  const { message_rate } = useBillingRates();
+  const { message_rate, storage_rate } = useBillingRates();
   const { data: me }                 = useGetMeQuery();
   const { data: billing, refetch: refetchBilling } = useGetBillingQuery();
   const { data: sensorsPage }        = useGetSensorsQuery(
@@ -393,6 +396,8 @@ const SetupBilling = () => {
   const [processCycle,    { isLoading: cycleLoading }] = useProcessBillingCycleMutation();
   const [suspendBilling]  = useSuspendBillingMutation();
   const [updateSensorStatus] = useUpdateSensorStatusMutation();
+  const [updateSensor] = useUpdateSensorMutation();
+  const [logConnectionEvent] = useLogConnectionEventMutation();
 
   // Live message counts from Kafka watermarks
   const [liveCounts, setLiveCounts] = useState<Record<string, number>>({});
@@ -423,13 +428,19 @@ const SetupBilling = () => {
   const unbudgetedCost = unbudgetedSensors.reduce(
     (sum, s) => sum + (liveCounts[s.sensor_id] ?? s.message_count) * message_rate, 0,
   );
-  // Total running cost across all sensors (for display)
-  const totalCost = sensors.reduce(
-    (sum, s) => sum + (liveCounts[s.sensor_id] ?? s.message_count) * message_rate, 0,
-  );
   const totalMessages = sensors.reduce(
     (sum, s) => sum + (liveCounts[s.sensor_id] ?? s.message_count), 0,
   );
+  const totalMsgCost = totalMessages * message_rate;
+  const totalStorageCost = sensors.reduce((sum, s) => {
+    const msgs = liveCounts[s.sensor_id] ?? s.message_count;
+    const storageBytes = s.storage_bytes > 0 ? s.storage_bytes : msgs * BYTES_PER_MSG;
+    const storageKB = storageBytes / 1024;
+    return sum + storageKB * (storage_rate / (1024 * 1024));
+  }, 0);
+  const totalQueryCost = 0; // Trino integration pending
+  // Total running cost across all sensors (for display)
+  const totalCost = totalMsgCost + totalStorageCost + totalQueryCost;
 
   // Sensors with exhausted budgets (running cost >= their assigned budget)
   const exhaustedBudgetSensors = budgetedSensors.filter(s => {
@@ -438,26 +449,42 @@ const SetupBilling = () => {
     return budget > 0 && cost >= budget;
   });
 
-  // Bug 3: suspension rules —
-  //   • Sensors WITH a budget: suspend individually when running_cost >= budget (regardless of cycle)
-  //   • Sensors WITHOUT a budget: suspend tenant account when their combined cost > balance
+  // Suspension: unbudgeted cost > balance → suspend account + disconnect all sensors
   useEffect(() => {
     if (!billing || billing.status !== "active") return;
-    // Unbudgeted sensor cost exhausts the shared balance → suspend account and disconnect all sensors
     if (unbudgetedCost > 0 && balance > 0 && unbudgetedCost > balance) {
-      suspendBilling().then(async () => {
-        toast.error("Account suspended: unbudgeted sensor costs exceed your balance. Top up to restore access.");
+      // Bug 3: pass totalCost so backend locks it into billing.amount_due for end-of-cycle deduction
+      suspendBilling({ amount_due: totalCost }).then(async () => {
+        toast.error("Account suspended: running cost exceeds balance. Top up to restore access.");
         refetchBilling();
-        // Disconnect all active sensors from the network
         const activeSensors = sensors.filter(s => s.status === "active");
         for (const sensor of activeSensors) {
+          // Disconnect from data pipeline
           try {
             await fetch(`${DATA_SERVICE_URL}/sensors/${sensor.tenant_id}/${sensor.sensor_id}/disconnect`, {
               method: "DELETE",
             });
           } catch { /* pipeline may be offline */ }
+          // Update sensor status to inactive + stamp billing_suspended flag so reactivation
+          // can distinguish this from a user-initiated disconnect
           try {
             await updateSensorStatus({ sensor_id: sensor.sensor_id, status: "inactive" }).unwrap();
+          } catch { /* best effort */ }
+          try {
+            await updateSensor({
+              sensor_id: sensor.sensor_id,
+              sensor_metadata: { ...(sensor.sensor_metadata ?? {}), billing_suspended: true },
+            }).unwrap();
+          } catch { /* best effort */ }
+          // Log the disconnection event on the sensor's connection timeline
+          try {
+            await logConnectionEvent({
+              sensor_id: sensor.sensor_id,
+              event_type: "sensor_suspended",
+              status: "success",
+              message: "Disconnected from network: billing suspended — running cost exceeded balance",
+              details: { reason: "billing_suspended", running_cost: totalCost, balance },
+            }).unwrap();
           } catch { /* best effort */ }
         }
         if (activeSensors.length > 0) {
@@ -467,6 +494,49 @@ const SetupBilling = () => {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unbudgetedCost, balance]);
+
+  // Bug 2: reactivate sensors when billing transitions suspended → active (top-up restored balance)
+  const prevBillingStatus = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const prev = prevBillingStatus.current;
+    prevBillingStatus.current = billing?.status;
+    if (prev !== "suspended" || billing?.status !== "active") return;
+    if (!sensors.length) return;
+    // Only reconnect sensors that were disconnected BY billing — not ones the user manually disconnected.
+    // billing_suspended flag is stamped on sensor_metadata during suspension; user disconnects never set it.
+    (async () => {
+      const billingSuspendedSensors = sensors.filter(
+        s => s.status === "inactive" && s.sensor_metadata?.billing_suspended === true,
+      );
+      for (const sensor of billingSuspendedSensors) {
+        // Restore active status
+        try {
+          await updateSensorStatus({ sensor_id: sensor.sensor_id, status: "active" }).unwrap();
+        } catch { /* best effort */ }
+        // Clear the billing_suspended flag so the sensor behaves normally going forward
+        try {
+          const restMeta = Object.fromEntries(
+            Object.entries(sensor.sensor_metadata ?? {}).filter(([k]) => k !== "billing_suspended"),
+          );
+          await updateSensor({ sensor_id: sensor.sensor_id, sensor_metadata: restMeta }).unwrap();
+        } catch { /* best effort */ }
+        // Log reconnection event
+        try {
+          await logConnectionEvent({
+            sensor_id: sensor.sensor_id,
+            event_type: "sensor_reconnected",
+            status: "success",
+            message: "Reconnected to network: billing restored after top-up",
+            details: { reason: "billing_restored" },
+          }).unwrap();
+        } catch { /* best effort */ }
+      }
+      if (billingSuspendedSensors.length > 0) {
+        toast.success(`${billingSuspendedSensors.length} sensor${billingSuspendedSensors.length > 1 ? "s" : ""} reconnected to the network.`);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [billing?.status]);
 
   // Billing cycle
   const [freqValue, setFreqValue] = useState<string>("");
@@ -491,8 +561,13 @@ const SetupBilling = () => {
   const handleProcessCycle = async () => {
     const now = new Date();
     const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    // Bug 3: if the cycle was suspended mid-period, billing.amount_due holds the locked running cost.
+    // Use it as the authoritative deduction amount so costs are not lost when sensors stop transmitting.
+    const amountToDeduct = (billing?.amount_due && billing.amount_due > 0)
+      ? billing.amount_due
+      : totalCost;
     try {
-      await processCycle({ amount: totalCost, message_count: totalMessages, usage_period: period }).unwrap();
+      await processCycle({ amount: amountToDeduct, message_count: totalMessages, usage_period: period }).unwrap();
       toast.success("Billing cycle processed — balance updated");
       refetchBilling();
     } catch {
@@ -586,10 +661,10 @@ const SetupBilling = () => {
                   className="block bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4 hover:border-purple-200 hover:shadow-md transition-all group">
                   <p className="text-xs text-gray-400 uppercase tracking-wide mb-2">Running Cost</p>
                   <p className="text-2xl font-bold text-purple-600 group-hover:text-purple-700">
-                    ${totalCost.toFixed(4)}
+                    ${totalCost.toFixed(2)}
                   </p>
                   <p className="text-xs text-gray-400 mt-1">
-                    {totalMessages.toLocaleString()} msgs × ${message_rate}/msg
+                    Msgs: ${totalMsgCost.toFixed(2)} · Storage: ${totalStorageCost.toFixed(2)} · Queries: ${totalQueryCost.toFixed(2)}
                   </p>
                   <p className="text-xs text-purple-500 mt-2 flex items-center gap-1 group-hover:gap-1.5 transition-all">
                     View breakdown
@@ -627,7 +702,7 @@ const SetupBilling = () => {
                   <div>
                     <p className="text-sm font-semibold text-red-700">Account suspended — balance exhausted</p>
                     <p className="text-xs text-red-600 mt-0.5">
-                      Unbudgeted sensor costs (${unbudgetedCost.toFixed(4)}) exceeded your balance. Top up to restore all unbudgeted services.
+                      Unbudgeted sensor costs (${unbudgetedCost.toFixed(2)}) exceeded your balance. Top up to restore all unbudgeted services.
                     </p>
                   </div>
                 </div>
@@ -681,7 +756,7 @@ const SetupBilling = () => {
                     <div>
                       <p className="text-sm font-medium text-amber-800">Billing cycle overdue</p>
                       <p className="text-xs text-amber-600 mt-0.5">
-                        ${totalCost.toFixed(4)} will be deducted from your balance.
+                        ${totalCost.toFixed(2)} will be deducted from your balance.
                       </p>
                     </div>
                     <button

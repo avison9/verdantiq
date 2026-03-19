@@ -59,6 +59,10 @@ class BillingTopUpRequest(BaseModel):
     reference: Optional[str] = None
 
 
+class BillingSuspendRequest(BaseModel):
+    amount_due: float = 0.0   # running cost at time of suspension — preserved for end-of-cycle deduction
+
+
 class BillingFrequencyUpdate(BaseModel):
     frequency: BillingFrequency
 

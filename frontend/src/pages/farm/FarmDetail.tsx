@@ -1,7 +1,10 @@
+import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import usePageTitle from "../../hooks/usePageTitle";
 import { useGetFarmQuery, useGetSensorsQuery } from "../../redux/apislices/userDashboardApiSlice";
 import { useGetMeQuery } from "../../redux/apislices/authApiSlice";
+
+const DATA_SERVICE_URL = import.meta.env.VITE_DATA_SERVICE_URL ?? "http://localhost:8090";
 
 const FarmDetail = () => {
   usePageTitle("Farm Detail — VerdantIQ");
@@ -12,8 +15,25 @@ const FarmDetail = () => {
   const { data: farm, isLoading } = useGetFarmQuery(farmId!, { skip: !farmId });
   const { data: sensorsPage } = useGetSensorsQuery(
     { tenant_id: me?.tenant_id ?? 0, per_page: 100 },
-    { skip: !me },
+    { skip: !me, pollingInterval: 30_000 },
   );
+
+  const [liveCounts, setLiveCounts] = useState<Record<string, number>>({});
+  useEffect(() => {
+    const fetchCounts = async () => {
+      try {
+        const r = await fetch(`${DATA_SERVICE_URL}/sensors/message-counts`, {
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!r.ok) return;
+        const body = await r.json() as { counts: Record<string, number> };
+        setLiveCounts(body.counts ?? {});
+      } catch { /* ignore */ }
+    };
+    fetchCounts();
+    const id = setInterval(fetchCounts, 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   const farmSensors = (sensorsPage?.items ?? []).filter(
     s => s.farm_id === farmId || String(s.sensor_metadata?.farm_id ?? "") === farmId
@@ -172,7 +192,7 @@ const FarmDetail = () => {
                           s.status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500"
                         }`}>{s.status}</span>
                       </td>
-                      <td className="py-2 text-right text-gray-600">{s.message_count.toLocaleString()}</td>
+                      <td className="py-2 text-right text-gray-600">{(liveCounts[s.sensor_id] ?? s.message_count).toLocaleString()}</td>
                     </tr>
                   ))}
                 </tbody>

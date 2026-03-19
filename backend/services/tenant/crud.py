@@ -214,6 +214,8 @@ def process_billing_cycle(
     billing.due_date = calculate_next_due_date(billing.frequency, now)
     if billing.balance <= 0:
         billing.status = models.BillingStatus.SUSPENDED
+    else:
+        billing.status = models.BillingStatus.ACTIVE
     tx = models.Transaction(
         billing_id=billing.id,
         type=models.TransactionType.DEBIT,

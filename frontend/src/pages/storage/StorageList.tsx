@@ -117,7 +117,7 @@ const StorageList = () => {
                         }`}>{item.status}</span>
                       </td>
                       <td className="px-6 py-3 text-sm text-gray-700 tabular-nums">
-                        ${(item.allocated_gb * storage_rate).toFixed(4)}/mo
+                        ${(item.allocated_gb * storage_rate).toFixed(2)}/mo
                       </td>
                       <td className="px-6 py-3">
                         <button

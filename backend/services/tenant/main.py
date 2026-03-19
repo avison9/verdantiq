@@ -179,14 +179,17 @@ async def process_billing_cycle(
 
 @app.post("/billings/suspend", response_model=schemas.BillingResponse)
 async def suspend_billing(
+    body: schemas.BillingSuspendRequest = schemas.BillingSuspendRequest(),
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Suspend billing when running cost exceeds balance. Called by frontend balance-check."""
+    """Suspend billing when running cost exceeds balance. Locks in amount_due for end-of-cycle deduction."""
     billing = crud.get_billing_by_tenant(db, current_user.tenant_id)
     if not billing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No billing record found")
     billing.status = models.BillingStatus.SUSPENDED
+    if body.amount_due > 0:
+        billing.amount_due = body.amount_due
     db.commit()
     db.refresh(billing)
     return billing
