@@ -451,3 +451,62 @@ def delete_farm(db: Session, tenant_id: int, farm_id: str) -> bool:
     db.delete(farm)
     db.commit()
     return True
+
+
+# ── Crop Management CRUD ──────────────────────────────────────────────────────
+
+def create_crop(
+    db: Session, tenant_id: int, data: schemas.CropManagementCreate
+) -> models.CropManagement:
+    crop = models.CropManagement(tenant_id=tenant_id, **data.model_dump())
+    db.add(crop)
+    db.commit()
+    db.refresh(crop)
+    return crop
+
+
+def get_crop(db: Session, tenant_id: int, crop_id: str) -> Optional[models.CropManagement]:
+    return db.query(models.CropManagement).filter(
+        models.CropManagement.id == crop_id,
+        models.CropManagement.tenant_id == tenant_id,
+    ).first()
+
+
+def list_crops(
+    db: Session, tenant_id: int, farm_id: Optional[str] = None,
+    page: int = 1, per_page: int = 50,
+) -> schemas.CropManagementPage:
+    q = db.query(models.CropManagement).filter(models.CropManagement.tenant_id == tenant_id)
+    if farm_id:
+        q = q.filter(models.CropManagement.farm_id == farm_id)
+    total = q.count()
+    items = q.order_by(models.CropManagement.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
+    return schemas.CropManagementPage(
+        items=items,
+        total=total,
+        page=page,
+        per_page=per_page,
+        pages=max(1, math.ceil(total / per_page)),
+    )
+
+
+def update_crop(
+    db: Session, tenant_id: int, crop_id: str, data: schemas.CropManagementUpdate
+) -> Optional[models.CropManagement]:
+    crop = get_crop(db, tenant_id, crop_id)
+    if not crop:
+        return None
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(crop, field, value)
+    db.commit()
+    db.refresh(crop)
+    return crop
+
+
+def delete_crop(db: Session, tenant_id: int, crop_id: str) -> bool:
+    crop = get_crop(db, tenant_id, crop_id)
+    if not crop:
+        return False
+    db.delete(crop)
+    db.commit()
+    return True

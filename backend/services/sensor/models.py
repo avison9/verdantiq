@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, BigInteger, String, Enum, DateTime, Float, ForeignKey, JSON
+from sqlalchemy import Column, Integer, BigInteger, String, Enum, DateTime, Float, ForeignKey, JSON, Date
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from configs import Base
@@ -130,6 +130,26 @@ class Farm(Base):
     notes             = Column(String(1000), nullable=True)
     created_at        = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at        = Column(DateTime, onupdate=func.now())
+
+
+class CropManagement(Base):
+    __tablename__ = "crop_management"
+    id                    = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), index=True)
+    farm_id               = Column(String(36), ForeignKey("farms.farm_id", ondelete="CASCADE"), nullable=False, index=True)
+    tenant_id             = Column(Integer, nullable=False, index=True)
+    crop_name             = Column(String(100), nullable=False)
+    area_ha               = Column(Float, nullable=True)
+    grain_type            = Column(String(100), nullable=True)
+    grains_planted        = Column(Integer, nullable=True)
+    planting_date         = Column(Date, nullable=True)
+    expected_harvest_date = Column(Date, nullable=True)
+    notes                 = Column(String(1000), nullable=True)
+    # Live sensor snapshot fields (updated by sensors)
+    avg_sunlight_hrs      = Column(Float, nullable=True)
+    soil_ph               = Column(Float, nullable=True)
+    soil_humidity         = Column(Float, nullable=True)
+    created_at            = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at            = Column(DateTime, onupdate=func.now())
 
 
 class SensorStorage(Base):

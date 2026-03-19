@@ -1,6 +1,6 @@
 from pydantic import BaseModel, ConfigDict
 from typing import Any, Optional, List
-from datetime import datetime
+from datetime import datetime, date
 from models import SensorStatus
 import math
 
@@ -216,6 +216,60 @@ class SensorStorageResponse(BaseModel):
 
 class SensorStoragePage(BaseModel):
     items: List[SensorStorageResponse]
+    total: int
+    page: int
+    per_page: int
+    pages: int
+
+
+class CropManagementCreate(BaseModel):
+    farm_id: str
+    crop_name: str
+    area_ha: Optional[float] = None
+    grain_type: Optional[str] = None
+    grains_planted: Optional[int] = None
+    planting_date: Optional[date] = None
+    expected_harvest_date: Optional[date] = None
+    notes: Optional[str] = None
+    avg_sunlight_hrs: Optional[float] = None
+    soil_ph: Optional[float] = None
+    soil_humidity: Optional[float] = None
+
+
+class CropManagementUpdate(BaseModel):
+    crop_name: Optional[str] = None
+    area_ha: Optional[float] = None
+    grain_type: Optional[str] = None
+    grains_planted: Optional[int] = None
+    planting_date: Optional[date] = None
+    expected_harvest_date: Optional[date] = None
+    notes: Optional[str] = None
+    avg_sunlight_hrs: Optional[float] = None
+    soil_ph: Optional[float] = None
+    soil_humidity: Optional[float] = None
+
+
+class CropManagementResponse(BaseModel):
+    id: str
+    farm_id: str
+    tenant_id: int
+    crop_name: str
+    area_ha: Optional[float] = None
+    grain_type: Optional[str] = None
+    grains_planted: Optional[int] = None
+    planting_date: Optional[date] = None
+    expected_harvest_date: Optional[date] = None
+    notes: Optional[str] = None
+    avg_sunlight_hrs: Optional[float] = None
+    soil_ph: Optional[float] = None
+    soil_humidity: Optional[float] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CropManagementPage(BaseModel):
+    items: List[CropManagementResponse]
     total: int
     page: int
     per_page: int
