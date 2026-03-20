@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     TRINO_PORT: int = 8080
     TRINO_USER: str = "user"
     TRINO_CATALOG: str = "iceberg"
-    TRINO_SCHEMA: str = "default"
+    TRINO_SCHEMA: str = "sensors"
 
     model_config = SettingsConfigDict(
         env_file=".env",

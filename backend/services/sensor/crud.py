@@ -5,6 +5,7 @@ import trino
 import trino.exceptions
 import uuid
 import math
+import re
 from configs import settings
 from typing import List, Optional
 from datetime import datetime, timezone
@@ -338,6 +339,40 @@ def get_sensor_data(sensor_id: str, tenant_id: int) -> List[schemas.SensorDataPo
         rows = cur.fetchall()
         cur.close()
         return [schemas.SensorDataPoint(timestamp=str(row[0]), value=row[1]) for row in rows]
+    except Exception as exc:
+        raise trino.exceptions.DatabaseError(str(exc)) from exc
+    finally:
+        conn.close()
+
+
+def run_query(sql: str, tenant_id: int) -> tuple[list[str], list[list[str | None]]]:
+    """Execute user SQL on Trino. Replaces current_user_tenant() with the real tenant_id.
+
+    Returns (columns, rows) where every cell is a string or None.
+    Raises ValueError for bad SQL (user error), trino.exceptions.DatabaseError for connectivity.
+    """
+    # tenant_id is stored as STRING in Iceberg — must be a quoted literal, not an integer
+    safe_sql = re.sub(r"current_user_tenant\s*\(\)", f"'{int(tenant_id)}'", sql, flags=re.IGNORECASE)
+    conn = trino.dbapi.connect(
+        host=settings.TRINO_HOST,
+        port=settings.TRINO_PORT,
+        user=settings.TRINO_USER,
+        catalog=settings.TRINO_CATALOG,
+        schema=settings.TRINO_SCHEMA,
+    )
+    try:
+        cur = conn.cursor()
+        cur.execute(safe_sql)
+        rows = cur.fetchmany(1000)
+        columns = [desc[0] for desc in (cur.description or [])]
+        str_rows: list[list[str | None]] = [
+            [str(cell) if cell is not None else None for cell in row]
+            for row in rows
+        ]
+        cur.close()
+        return columns, str_rows
+    except trino.exceptions.TrinoUserError as exc:
+        raise ValueError(str(exc)) from exc
     except Exception as exc:
         raise trino.exceptions.DatabaseError(str(exc)) from exc
     finally:
