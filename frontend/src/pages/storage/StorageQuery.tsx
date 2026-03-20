@@ -197,9 +197,19 @@ function SchemaExplorer({
           </div>
         ))}
 
-        {/* Empty state — connected but no tables yet */}
+        {/* Empty state — Trino connected but no catalogs/tables yet */}
+        {!isLoading && !isError && catalogs.length === 0 && (
+          <div className="px-4 py-6 text-center">
+            <svg className="w-6 h-6 text-gray-200 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+            </svg>
+            <p className="text-xs text-gray-400">No schemas found.</p>
+            <p className="text-xs text-gray-300 mt-1">Send sensor data to populate Iceberg.</p>
+          </div>
+        )}
         {!isLoading && !isError && catalogs.length > 0 &&
-          catalogs[0].schemas.every(s => s.tables.length === 0) && (
+          catalogs.every(c => c.schemas.every(s => s.tables.length === 0)) && (
           <div className="px-4 py-6 text-center">
             <p className="text-xs text-gray-400">No tables yet.</p>
             <p className="text-xs text-gray-300 mt-1">Send sensor data to create Iceberg tables.</p>
@@ -329,7 +339,7 @@ const StorageQuery = () => {
             </Link>
           )}
           <button
-            onClick={() => setSql(DEFAULT_SQL)}
+            onClick={() => setSql(PLACEHOLDER_SQL)}
             className="text-xs text-gray-500 hover:text-gray-700 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50 transition-colors"
           >
             Reset
@@ -359,7 +369,7 @@ const StorageQuery = () => {
 
         {/* Left: Schema Explorer */}
         <div className="w-56 shrink-0 overflow-hidden flex flex-col">
-          <SchemaExplorer onInsert={handleInsert} />
+          <SchemaExplorer onInsert={handleInsert} onCatalogLabel={setCatalogLabel} />
         </div>
 
         {/* Right: Editor + Results */}
