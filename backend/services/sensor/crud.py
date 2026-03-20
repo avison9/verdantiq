@@ -385,8 +385,10 @@ def run_query(sql: str, tenant_id: int) -> tuple[list[str], list[list[str | None
     Returns (columns, rows) where every cell is a string or None.
     Raises ValueError for bad SQL (user error), trino.exceptions.DatabaseError for connectivity.
     """
+    # Trino DBAPI rejects a trailing semicolon — strip it before executing
+    safe_sql = sql.strip().rstrip(";").strip()
     # tenant_id is stored as STRING in Iceberg — must be a quoted literal, not an integer
-    safe_sql = re.sub(r"current_user_tenant\s*\(\)", f"'{int(tenant_id)}'", sql, flags=re.IGNORECASE)
+    safe_sql = re.sub(r"current_user_tenant\s*\(\)", f"'{int(tenant_id)}'", safe_sql, flags=re.IGNORECASE)
     conn = trino.dbapi.connect(
         host=settings.TRINO_HOST,
         port=settings.TRINO_PORT,
