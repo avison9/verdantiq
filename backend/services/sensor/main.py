@@ -470,6 +470,18 @@ async def delete_storage(
         raise HTTPException(status_code=404, detail="Storage allocation not found")
 
 
+@app.post("/internal/sensors/suspend-tenant")
+async def internal_suspend_tenant(
+    body: schemas.TenantSuspendRequest,
+    db: Session = Depends(get_db),
+):
+    """Called by tenant service when billing is auto-suspended due to overdrawn balance.
+    Marks all active sensors for the tenant as inactive and stamps billing_suspended metadata.
+    """
+    count = crud.suspend_tenant_sensors(db, body.tenant_id)
+    return {"suspended": count}
+
+
 @app.post("/internal/sensors/{sensor_id}/messages")
 async def internal_increment_messages(
     sensor_id: str,

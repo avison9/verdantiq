@@ -345,6 +345,40 @@ def get_sensor_data(sensor_id: str, tenant_id: int) -> List[schemas.SensorDataPo
         conn.close()
 
 
+def suspend_tenant_sensors(db: Session, tenant_id: int) -> int:
+    """Mark every active sensor for a tenant as inactive and stamp billing_suspended metadata.
+
+    Returns the count of sensors that were deactivated.
+    """
+    active_sensors = (
+        db.query(models.Sensor)
+        .filter(
+            models.Sensor.tenant_id == tenant_id,
+            models.Sensor.status == models.SensorStatus.active,
+        )
+        .all()
+    )
+    for sensor in active_sensors:
+        meta = dict(sensor.sensor_metadata or {})
+        meta["billing_suspended"] = True
+        sensor.sensor_metadata = meta
+        sensor.status = models.SensorStatus.inactive
+        log_audit(
+            db, tenant_id, sensor.sensor_id, sensor.sensor_name,
+            "status_changed", sensor.user_id,
+            {"old_status": "active", "new_status": "inactive", "reason": "billing_suspended"},
+        )
+        log_connection_event(
+            db, sensor.sensor_id, tenant_id,
+            event_type="sensor_suspended",
+            status="success",
+            message="Disconnected: billing auto-suspended — running cost exceeded balance",
+            details={"reason": "billing_suspended"},
+        )
+    db.commit()
+    return len(active_sensors)
+
+
 def run_query(sql: str, tenant_id: int) -> tuple[list[str], list[list[str | None]]]:
     """Execute user SQL on Trino. Replaces current_user_tenant() with the real tenant_id.
 

@@ -276,6 +276,10 @@ class CropManagementPage(BaseModel):
     pages: int
 
 
+class TenantSuspendRequest(BaseModel):
+    tenant_id: int
+
+
 class QueryRequest(BaseModel):
     sql: str
 

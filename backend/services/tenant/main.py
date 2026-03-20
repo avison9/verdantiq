@@ -5,11 +5,12 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 from typing import List
+import httpx
 import models
 import schemas
 import crud
 from authenticate import decode_access_token
-from configs import get_db, Base, engine, ALLOWED_ORIGINS
+from configs import get_db, Base, engine, ALLOWED_ORIGINS, settings
 
 
 @asynccontextmanager
@@ -169,8 +170,6 @@ async def process_billing_cycle(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if body.amount < 0:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Amount must be non-negative")
     try:
         return crud.process_billing_cycle(db, current_user.tenant_id, body)
     except ValueError as exc:
@@ -225,6 +224,20 @@ async def get_transactions(
     return crud.get_transactions(db, billing.id, page, per_page)
 
 
+# ─── Internal helpers ─────────────────────────────────────────────────────────
+
+async def notify_sensor_suspend(tenant_id: int) -> None:
+    """Tell the sensor service to deactivate all active sensors for this tenant."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(
+                f"{settings.SENSOR_SERVICE_URL}/internal/sensors/suspend-tenant",
+                json={"tenant_id": tenant_id},
+            )
+    except httpx.RequestError:
+        pass  # best-effort; billing is already suspended in DB
+
+
 # ─── Internal routes (sensor service → tenant service) ───────────────────────
 # These are NOT exposed through the Nginx gateway.
 
@@ -240,13 +253,17 @@ async def get_billing_status(tenant_id: int, db: Session = Depends(get_db)):
 
 @app.patch("/internal/billings/sensor-count")
 async def update_sensor_count(data: schemas.SensorCountUpdate, db: Session = Depends(get_db)):
-    crud.update_sensor_count(db, data.tenant_id, data.delta)
+    _, newly_suspended = crud.update_sensor_count(db, data.tenant_id, data.delta)
+    if newly_suspended:
+        await notify_sensor_suspend(data.tenant_id)
     return {"status": "ok"}
 
 
 @app.patch("/internal/billings/message-count")
 async def update_message_count(data: schemas.MessageCountUpdate, db: Session = Depends(get_db)):
-    crud.update_message_count(db, data.tenant_id, data.increment)
+    _, newly_suspended = crud.update_message_count(db, data.tenant_id, data.increment)
+    if newly_suspended:
+        await notify_sensor_suspend(data.tenant_id)
     return {"status": "ok"}
 
 
