@@ -9,7 +9,6 @@ import {
   useTopUpBillingMutation,
   useUpdateBillingFrequencyMutation,
   useProcessBillingCycleMutation,
-  useSuspendBillingMutation,
   useUpdateSensorStatusMutation,
   useUpdateSensorMutation,
   useLogConnectionEventMutation,
@@ -394,7 +393,6 @@ const SetupBilling = () => {
   );
   const [updateFrequency, { isLoading: freqLoading }] = useUpdateBillingFrequencyMutation();
   const [processCycle,    { isLoading: cycleLoading }] = useProcessBillingCycleMutation();
-  const [suspendBilling]  = useSuspendBillingMutation();
   const [updateSensorStatus] = useUpdateSensorStatusMutation();
   const [updateSensor] = useUpdateSensorMutation();
   const [logConnectionEvent] = useLogConnectionEventMutation();
@@ -449,53 +447,7 @@ const SetupBilling = () => {
     return budget > 0 && cost >= budget;
   });
 
-  // Suspension: unbudgeted cost > balance → suspend account + disconnect all sensors
-  useEffect(() => {
-    if (!billing || billing.status !== "active") return;
-    if (unbudgetedCost > 0 && balance > 0 && unbudgetedCost > balance) {
-      // Bug 3: pass totalCost so backend locks it into billing.amount_due for end-of-cycle deduction
-      suspendBilling({ amount_due: totalCost }).then(async () => {
-        toast.error("Account suspended: running cost exceeds balance. Top up to restore access.");
-        refetchBilling();
-        const activeSensors = sensors.filter(s => s.status === "active");
-        for (const sensor of activeSensors) {
-          // Disconnect from data pipeline
-          try {
-            await fetch(`${DATA_SERVICE_URL}/sensors/${sensor.tenant_id}/${sensor.sensor_id}/disconnect`, {
-              method: "DELETE",
-            });
-          } catch { /* pipeline may be offline */ }
-          // Update sensor status to inactive + stamp billing_suspended flag so reactivation
-          // can distinguish this from a user-initiated disconnect
-          try {
-            await updateSensorStatus({ sensor_id: sensor.sensor_id, status: "inactive" }).unwrap();
-          } catch { /* best effort */ }
-          try {
-            await updateSensor({
-              sensor_id: sensor.sensor_id,
-              sensor_metadata: { ...(sensor.sensor_metadata ?? {}), billing_suspended: true },
-            }).unwrap();
-          } catch { /* best effort */ }
-          // Log the disconnection event on the sensor's connection timeline
-          try {
-            await logConnectionEvent({
-              sensor_id: sensor.sensor_id,
-              event_type: "sensor_suspended",
-              status: "success",
-              message: "Disconnected from network: billing suspended — running cost exceeded balance",
-              details: { reason: "billing_suspended", running_cost: totalCost, balance },
-            }).unwrap();
-          } catch { /* best effort */ }
-        }
-        if (activeSensors.length > 0) {
-          toast.warn(`${activeSensors.length} sensor${activeSensors.length > 1 ? "s" : ""} disconnected from the network.`);
-        }
-      });
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [unbudgetedCost, balance]);
-
-  // Bug 2: reactivate sensors when billing transitions suspended → active (top-up restored balance)
+  // Reactivate sensors when billing transitions suspended → active (top-up restored balance)
   const prevBillingStatus = useRef<string | undefined>(undefined);
   useEffect(() => {
     const prev = prevBillingStatus.current;
@@ -561,13 +513,8 @@ const SetupBilling = () => {
   const handleProcessCycle = async () => {
     const now = new Date();
     const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-    // Bug 3: if the cycle was suspended mid-period, billing.amount_due holds the locked running cost.
-    // Use it as the authoritative deduction amount so costs are not lost when sensors stop transmitting.
-    const amountToDeduct = (billing?.amount_due && billing.amount_due > 0)
-      ? billing.amount_due
-      : totalCost;
     try {
-      await processCycle({ amount: amountToDeduct, message_count: totalMessages, usage_period: period }).unwrap();
+      await processCycle({ usage_period: period }).unwrap();
       toast.success("Billing cycle processed — balance updated");
       refetchBilling();
     } catch {

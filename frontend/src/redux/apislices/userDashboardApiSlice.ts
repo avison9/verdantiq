@@ -206,8 +206,6 @@ export interface BillingFrequencyUpdate {
 }
 
 export interface BillingProcessCycle {
-  amount: number;
-  message_count: number;
   usage_period?: string;
 }
 

@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Link } from "react-router-dom";
 import usePageTitle from "../../hooks/usePageTitle";
 import {
@@ -9,30 +9,46 @@ import {
   type CatalogEntry,
 } from "../../redux/apislices/userDashboardApiSlice";
 
-const DEFAULT_SQL = `SELECT
-  sensor_id,
-  event_time,
-  metrics
-FROM iceberg.sensors.soil_data
+const PLACEHOLDER_SQL = `-- Select a table from the explorer on the left,
+-- or type your SQL query here.
+-- Use current_user_tenant() to filter by your tenant.
+
+SELECT * FROM <catalog>.<schema>.<table>
 WHERE tenant_id = current_user_tenant()
-  AND event_time >= NOW() - INTERVAL '7' DAY
-ORDER BY event_time DESC
 LIMIT 50;`;
 
 type ResultSet = QueryResult;
 
 // ── Schema Explorer ────────────────────────────────────────────────────────────
 
-function SchemaExplorer({ onInsert }: { onInsert: (text: string) => void }) {
+function SchemaExplorer({
+  onInsert,
+  onCatalogLabel,
+}: {
+  onInsert: (text: string) => void;
+  onCatalogLabel: (label: string) => void;
+}) {
   const { data: schemaTree, isLoading, isError, refetch } = useGetQuerySchemaQuery();
 
   const catalogs: CatalogEntry[] = schemaTree?.catalogs ?? [];
 
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({
-    "iceberg": true,
-    "iceberg.sensors": true,
-  });
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [search, setSearch] = useState("");
+
+  // Auto-expand the first catalog and its first schema once data loads.
+  // Also push the catalog label up to the parent for the top-bar.
+  useEffect(() => {
+    if (!catalogs.length) return;
+    const first = catalogs[0];
+    const init: Record<string, boolean> = { [first.name]: true };
+    if (first.schemas.length) {
+      init[`${first.name}.${first.schemas[0].name}`] = true;
+    }
+    setExpanded(init);
+    const firstSchema = first.schemas[0]?.name;
+    onCatalogLabel(firstSchema ? `${first.name}.${firstSchema}` : first.name);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schemaTree]);
 
   const toggle = (key: string) =>
     setExpanded(p => ({ ...p, [key]: !p[key] }));
@@ -202,18 +218,28 @@ const StorageQuery = () => {
   const billingActive = billing?.status === "active";
   const [runQuery] = useRunQueryMutation();
 
-  const [sql, setSql]                   = useState(DEFAULT_SQL);
+  const [sql, setSql]                   = useState(PLACEHOLDER_SQL);
   const [running, setRunning]           = useState(false);
   const [results, setResults]           = useState<ResultSet | null>(null);
   const [queryError, setQueryError]     = useState<string | null>(null);
   const [trinoOk, setTrinoOk]           = useState<boolean | null>(null);
   const [activeTab, setActiveTab]       = useState<"results" | "history">("results");
   const [history, setHistory]           = useState<{ ts: string; query: string; ms: number }[]>([]);
+  const [catalogLabel, setCatalogLabel] = useState<string>("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleInsert = (text: string) => {
     const el = textareaRef.current;
     if (!el) return;
+    // If the inserted text looks like a fully-qualified table name (x.y.z),
+    // replace the entire editor with a ready-to-run SELECT template.
+    const isFqn = (text.match(/\./g) ?? []).length === 2;
+    if (isFqn) {
+      const template = `SELECT *\nFROM ${text}\nWHERE tenant_id = current_user_tenant()\nLIMIT 50;`;
+      setSql(template);
+      requestAnimationFrame(() => { el.focus(); });
+      return;
+    }
     const start = el.selectionStart;
     const end   = el.selectionEnd;
     const next  = sql.slice(0, start) + text + sql.slice(end);
@@ -274,7 +300,9 @@ const StorageQuery = () => {
         <div className="flex items-center gap-3">
           <h1 className="text-sm font-semibold text-gray-800">Query Console</h1>
           <span className="text-gray-300">·</span>
-          <span className="text-xs font-mono text-gray-500">iceberg.sensors</span>
+          {catalogLabel && (
+            <span className="text-xs font-mono text-gray-500">{catalogLabel}</span>
+          )}
           {/* Connection status */}
           {trinoOk === true ? (
             <span className="flex items-center gap-1.5 text-xs text-emerald-600 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
