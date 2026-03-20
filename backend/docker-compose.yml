@@ -69,6 +69,7 @@ services:
     env_file: ../.env
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-mypassword}@postgres:5432/${POSTGRES_DB:-verdantiq}
+      SENSOR_SERVICE_URL: http://sensor:8003
     ports:
       - "8002:8002"
     networks:

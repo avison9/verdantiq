@@ -67,28 +67,51 @@ def create_ml_feature_subscription(
     return db_ml
 
 
-def update_sensor_count(db: Session, tenant_id: int, delta: int):
+def _auto_suspend_if_overdrawn(billing: "models.Billing") -> bool:
+    """Set billing to SUSPENDED if amount_due exceeds balance. Returns True if newly suspended."""
+    if (
+        billing.status == models.BillingStatus.ACTIVE
+        and billing.amount_due > (billing.balance or 0.0)
+    ):
+        billing.status = models.BillingStatus.SUSPENDED
+        return True
+    return False
+
+
+def update_sensor_count(db: Session, tenant_id: int, delta: int) -> tuple["models.Billing | None", bool]:
     billing = get_billing_by_tenant(db, tenant_id)
+    newly_suspended = False
     if billing:
         billing.sensor_count = max(0, billing.sensor_count + delta)
-        billing.amount_due = calculate_amount_due(
-            billing.message_count, billing.sensor_count, billing.ml_features
-        )
+        # Only recalculate amount_due while billing is active.
+        # Once suspended, amount_due is frozen at the suspension value so the
+        # outstanding debt is preserved for end-of-cycle deduction.
+        if billing.status == models.BillingStatus.ACTIVE:
+            billing.amount_due = calculate_amount_due(
+                billing.message_count, billing.sensor_count, billing.ml_features
+            )
+            newly_suspended = _auto_suspend_if_overdrawn(billing)
         db.commit()
         db.refresh(billing)
-    return billing
+    return billing, newly_suspended
 
 
-def update_message_count(db: Session, tenant_id: int, increment: int):
+def update_message_count(db: Session, tenant_id: int, increment: int) -> tuple["models.Billing | None", bool]:
     billing = get_billing_by_tenant(db, tenant_id)
+    newly_suspended = False
     if billing:
         billing.message_count += increment
-        billing.amount_due = calculate_amount_due(
-            billing.message_count, billing.sensor_count, billing.ml_features
-        )
+        # Only recalculate amount_due while billing is active.
+        # Once suspended, amount_due is frozen at the suspension value so the
+        # outstanding debt is preserved for end-of-cycle deduction.
+        if billing.status == models.BillingStatus.ACTIVE:
+            billing.amount_due = calculate_amount_due(
+                billing.message_count, billing.sensor_count, billing.ml_features
+            )
+            newly_suspended = _auto_suspend_if_overdrawn(billing)
         db.commit()
         db.refresh(billing)
-    return billing
+    return billing, newly_suspended
 
 
 def _detect_card_brand(card_number: str) -> str:
@@ -206,7 +229,11 @@ def process_billing_cycle(
     if not billing:
         raise ValueError("No billing record found")
     now = datetime.now(timezone.utc).replace(tzinfo=None)
-    deduct = min(req.amount, billing.balance or 0.0)
+    # Use the server-side amount_due (frozen at suspension or current running total).
+    # Never trust an amount sent from the frontend — the backend owns the debt value.
+    amount_owed = billing.amount_due
+    cycle_messages = billing.message_count
+    deduct = min(amount_owed, billing.balance or 0.0)
     billing.balance = (billing.balance or 0.0) - deduct
     billing.message_count = 0
     billing.amount_due = 0.0
@@ -221,9 +248,9 @@ def process_billing_cycle(
         type=models.TransactionType.DEBIT,
         amount=deduct,
         balance_after=billing.balance,
-        description=f"Billing cycle charge — {req.message_count:,} messages",
+        description=f"Billing cycle charge — {cycle_messages:,} messages",
         usage_period=req.usage_period or now.strftime("%Y-%m"),
-        data_points=req.message_count,
+        data_points=cycle_messages,
         reference=f"CYCLE-{uuid.uuid4().hex[:8].upper()}",
     )
     db.add(tx)

@@ -68,8 +68,6 @@ class BillingFrequencyUpdate(BaseModel):
 
 
 class BillingProcessCycleRequest(BaseModel):
-    amount: float
-    message_count: int
     usage_period: Optional[str] = None
 
 
