@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from collections import defaultdict
 from fastapi import FastAPI, Depends, HTTPException, status, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
@@ -6,6 +7,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 from typing import List, Optional
 import httpx
+import time
 import trino.exceptions
 import models
 import schemas
@@ -590,6 +592,70 @@ async def delete_crop(
     deleted = crud.delete_crop(db, current_user.tenant_id, crop_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Crop not found")
+
+
+@app.get("/query/schema", response_model=schemas.SchemaTree)
+async def get_query_schema(
+    current_user: models.User = Depends(get_current_user),
+):
+    """Return the live Iceberg catalog tree (schemas → tables → columns) from Trino."""
+    _sql = (
+        "SELECT table_schema, table_name, column_name, data_type "
+        "FROM iceberg.information_schema.columns "
+        "WHERE table_schema NOT IN ('information_schema') "
+        "ORDER BY table_schema, table_name, ordinal_position"
+    )
+    try:
+        _, rows = crud.run_query(_sql, current_user.tenant_id)
+    except trino.exceptions.DatabaseError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Query engine unavailable: {exc}",
+        )
+
+    # Build nested tree from flat rows
+    tree: dict[str, dict[str, list[schemas.SchemaColumn]]] = defaultdict(lambda: defaultdict(list))
+    for row in rows:
+        schema_name, table_name, col_name, col_type = row[0], row[1], row[2], row[3]
+        tree[schema_name][table_name].append(schemas.SchemaColumn(name=col_name, type=col_type))
+
+    schema_entries = [
+        schemas.SchemaEntry(
+            name=schema_name,
+            tables=[
+                schemas.SchemaTable(name=tbl, cols=cols)
+                for tbl, cols in sorted(tables.items())
+            ],
+        )
+        for schema_name, tables in sorted(tree.items())
+    ]
+    return schemas.SchemaTree(
+        catalogs=[schemas.CatalogEntry(name="iceberg", schemas=schema_entries)]
+    )
+
+
+@app.post("/query/", response_model=schemas.QueryResult)
+async def execute_query(
+    body: schemas.QueryRequest,
+    current_user: models.User = Depends(get_current_user),
+):
+    if not body.sql.strip():
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="SQL query cannot be empty")
+    billing_active = await check_billing_active(current_user.tenant_id)
+    if not billing_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Active billing required to run queries")
+    t0 = time.monotonic()
+    try:
+        columns, rows = crud.run_query(body.sql, current_user.tenant_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except trino.exceptions.DatabaseError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Query engine unavailable: {exc}",
+        )
+    ms = int((time.monotonic() - t0) * 1000)
+    return schemas.QueryResult(columns=columns, rows=rows, ms=ms)
 
 
 @app.get("/health")

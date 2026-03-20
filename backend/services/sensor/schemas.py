@@ -274,3 +274,37 @@ class CropManagementPage(BaseModel):
     page: int
     per_page: int
     pages: int
+
+
+class QueryRequest(BaseModel):
+    sql: str
+
+
+class QueryResult(BaseModel):
+    columns: List[str]
+    rows: List[List[Any]]
+    ms: int
+
+
+class SchemaColumn(BaseModel):
+    name: str
+    type: str
+
+
+class SchemaTable(BaseModel):
+    name: str
+    cols: List[SchemaColumn]
+
+
+class SchemaEntry(BaseModel):
+    name: str
+    tables: List[SchemaTable]
+
+
+class CatalogEntry(BaseModel):
+    name: str
+    schemas: List[SchemaEntry]
+
+
+class SchemaTree(BaseModel):
+    catalogs: List[CatalogEntry]

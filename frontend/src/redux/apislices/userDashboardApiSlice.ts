@@ -279,6 +279,22 @@ export interface CropManagementCreate {
 
 export type CropManagementUpdate = Partial<Omit<CropManagementCreate, "farm_id">>;
 
+export interface QueryRequest {
+  sql: string;
+}
+
+export interface QueryResult {
+  columns: string[];
+  rows: (string | null)[][];
+  ms: number;
+}
+
+export interface SchemaColumn { name: string; type: string; }
+export interface SchemaTable  { name: string; cols: SchemaColumn[]; }
+export interface SchemaEntry  { name: string; tables: SchemaTable[]; }
+export interface CatalogEntry { name: string; schemas: SchemaEntry[]; }
+export interface SchemaTree   { catalogs: CatalogEntry[]; }
+
 export const userDashboardApiSlice = baseApiSlice.injectEndpoints({
   endpoints: (builder) => ({
     getSensors: builder.query<SensorPage, { tenant_id: number; page?: number; per_page?: number }>({
@@ -500,6 +516,16 @@ export const userDashboardApiSlice = baseApiSlice.injectEndpoints({
       }),
       invalidatesTags: ["Farm"],
     }),
+    runQuery: builder.mutation<QueryResult, QueryRequest>({
+      query: (body) => ({
+        url: `${APIendPoints.query}/`,
+        method: "POST",
+        body,
+      }),
+    }),
+    getQuerySchema: builder.query<SchemaTree, void>({
+      query: () => `${APIendPoints.query}/schema`,
+    }),
   }),
 });
 
@@ -536,4 +562,6 @@ export const {
   useCreateCropMutation,
   useUpdateCropMutation,
   useDeleteCropMutation,
+  useRunQueryMutation,
+  useGetQuerySchemaQuery,
 } = userDashboardApiSlice;
