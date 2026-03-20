@@ -26,4 +26,6 @@ export const APIendPoints = {
   farms: "farms",
   // Crop Management
   cropManagement: "crop-management",
+  // Query (Trino)
+  query: "query",
 };

@@ -1,88 +1,36 @@
 import { useState, useRef } from "react";
 import { Link } from "react-router-dom";
 import usePageTitle from "../../hooks/usePageTitle";
-import { useGetBillingQuery } from "../../redux/apislices/userDashboardApiSlice";
-
-// ── Schema catalogue (static until Trino connects) ────────────────────────────
-
-interface SchemaTable {
-  name: string;
-  cols: { name: string; type: string }[];
-}
-interface SchemaEntry {
-  name: string;
-  tables: SchemaTable[];
-}
-interface Catalog {
-  name: string;
-  schemas: SchemaEntry[];
-}
-
-const CATALOG: Catalog[] = [
-  {
-    name: "iceberg",
-    schemas: [
-      {
-        name: "verdantiq",
-        tables: [
-          { name: "sensor_readings", cols: [
-            { name: "ts",          type: "TIMESTAMP" },
-            { name: "sensor_id",   type: "VARCHAR" },
-            { name: "tenant_id",   type: "INTEGER" },
-            { name: "value",       type: "DOUBLE" },
-            { name: "unit",        type: "VARCHAR" },
-          ]},
-          { name: "farms", cols: [
-            { name: "farm_id",      type: "VARCHAR" },
-            { name: "tenant_id",    type: "INTEGER" },
-            { name: "farm_name",    type: "VARCHAR" },
-            { name: "country",      type: "VARCHAR" },
-            { name: "farm_size_ha", type: "DOUBLE" },
-          ]},
-          { name: "sensors", cols: [
-            { name: "sensor_id",   type: "VARCHAR" },
-            { name: "sensor_name", type: "VARCHAR" },
-            { name: "sensor_type", type: "VARCHAR" },
-            { name: "status",      type: "VARCHAR" },
-            { name: "created_at",  type: "TIMESTAMP" },
-          ]},
-          { name: "aggregates_daily", cols: [
-            { name: "date",        type: "DATE" },
-            { name: "sensor_id",   type: "VARCHAR" },
-            { name: "avg_value",   type: "DOUBLE" },
-            { name: "min_value",   type: "DOUBLE" },
-            { name: "max_value",   type: "DOUBLE" },
-            { name: "reading_cnt", type: "BIGINT" },
-          ]},
-        ],
-      },
-    ],
-  },
-];
+import {
+  useGetBillingQuery,
+  useRunQueryMutation,
+  useGetQuerySchemaQuery,
+  type QueryResult,
+  type CatalogEntry,
+} from "../../redux/apislices/userDashboardApiSlice";
 
 const DEFAULT_SQL = `SELECT
   sensor_id,
-  AVG(value)   AS avg_value,
-  COUNT(*)     AS readings
-FROM iceberg.verdantiq.sensor_readings
+  event_time,
+  metrics
+FROM iceberg.sensors.soil_data
 WHERE tenant_id = current_user_tenant()
-  AND ts >= NOW() - INTERVAL '7' DAY
-GROUP BY sensor_id
-ORDER BY avg_value DESC
+  AND event_time >= NOW() - INTERVAL '7' DAY
+ORDER BY event_time DESC
 LIMIT 50;`;
 
-interface ResultSet {
-  columns: string[];
-  rows:    string[][];
-  ms:      number;
-}
+type ResultSet = QueryResult;
 
 // ── Schema Explorer ────────────────────────────────────────────────────────────
 
 function SchemaExplorer({ onInsert }: { onInsert: (text: string) => void }) {
+  const { data: schemaTree, isLoading, isError, refetch } = useGetQuerySchemaQuery();
+
+  const catalogs: CatalogEntry[] = schemaTree?.catalogs ?? [];
+
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
     "iceberg": true,
-    "iceberg.verdantiq": true,
+    "iceberg.sensors": true,
   });
   const [search, setSearch] = useState("");
 
@@ -93,7 +41,19 @@ function SchemaExplorer({ onInsert }: { onInsert: (text: string) => void }) {
     <div className="flex flex-col h-full border-r border-gray-200 bg-gray-50">
       {/* Header */}
       <div className="px-3 py-3 border-b border-gray-200">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Explorer</p>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Explorer</p>
+          <button
+            onClick={() => refetch()}
+            title="Refresh schema"
+            className="text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
+        </div>
         <div className="relative">
           <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -109,9 +69,33 @@ function SchemaExplorer({ onInsert }: { onInsert: (text: string) => void }) {
 
       {/* Tree */}
       <div className="flex-1 overflow-y-auto py-2 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: "none" }}>
-        {CATALOG.map(cat => (
+
+        {/* Loading state */}
+        {isLoading && (
+          <div className="flex flex-col items-center justify-center py-8 gap-2">
+            <svg className="w-4 h-4 animate-spin text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            <p className="text-xs text-gray-400">Loading schema…</p>
+          </div>
+        )}
+
+        {/* Error state */}
+        {isError && !isLoading && (
+          <div className="flex flex-col items-center justify-center py-8 gap-2 px-3">
+            <svg className="w-5 h-5 text-red-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+            </svg>
+            <p className="text-xs text-red-500 text-center">Trino unavailable</p>
+            <button onClick={() => refetch()} className="text-xs text-emerald-600 hover:underline">Retry</button>
+          </div>
+        )}
+
+        {/* Tree */}
+        {!isLoading && !isError && catalogs.map(cat => (
           <div key={cat.name}>
-            {/* Catalog */}
             <button
               onClick={() => toggle(cat.name)}
               className="w-full flex items-center gap-1.5 px-3 py-1.5 hover:bg-gray-100 transition-colors text-left"
@@ -148,6 +132,7 @@ function SchemaExplorer({ onInsert }: { onInsert: (text: string) => void }) {
                         d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
                     </svg>
                     <span className="text-xs font-medium text-gray-600">{schema.name}</span>
+                    <span className="ml-auto text-[10px] text-gray-300">{filteredTables.length}</span>
                   </button>
 
                   {expanded[schemaKey] && filteredTables.map(table => {
@@ -195,6 +180,15 @@ function SchemaExplorer({ onInsert }: { onInsert: (text: string) => void }) {
             })}
           </div>
         ))}
+
+        {/* Empty state — connected but no tables yet */}
+        {!isLoading && !isError && catalogs.length > 0 &&
+          catalogs[0].schemas.every(s => s.tables.length === 0) && (
+          <div className="px-4 py-6 text-center">
+            <p className="text-xs text-gray-400">No tables yet.</p>
+            <p className="text-xs text-gray-300 mt-1">Send sensor data to create Iceberg tables.</p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -206,12 +200,15 @@ const StorageQuery = () => {
   usePageTitle("Query — VerdantIQ Analytics");
   const { data: billing } = useGetBillingQuery();
   const billingActive = billing?.status === "active";
+  const [runQuery] = useRunQueryMutation();
 
-  const [sql, setSql]         = useState(DEFAULT_SQL);
-  const [running, setRunning] = useState(false);
-  const [results, setResults] = useState<ResultSet | null>(null);
-  const [activeTab, setActiveTab] = useState<"results" | "history">("results");
-  const [history, setHistory] = useState<{ ts: string; query: string; ms: number }[]>([]);
+  const [sql, setSql]                   = useState(DEFAULT_SQL);
+  const [running, setRunning]           = useState(false);
+  const [results, setResults]           = useState<ResultSet | null>(null);
+  const [queryError, setQueryError]     = useState<string | null>(null);
+  const [trinoOk, setTrinoOk]           = useState<boolean | null>(null);
+  const [activeTab, setActiveTab]       = useState<"results" | "history">("results");
+  const [history, setHistory]           = useState<{ ts: string; query: string; ms: number }[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleInsert = (text: string) => {
@@ -231,18 +228,25 @@ const StorageQuery = () => {
     if (!billingActive || !sql.trim()) return;
     setRunning(true);
     setResults(null);
+    setQueryError(null);
     setActiveTab("results");
-    const start = Date.now();
-    await new Promise(r => setTimeout(r, 650));
-    const ms = Date.now() - start;
-    // Trino pending — return empty result set with expected columns
-    setResults({ columns: ["sensor_id", "avg_value", "readings"], rows: [], ms });
-    setHistory(prev => [{
-      ts: new Date().toLocaleTimeString(),
-      query: sql.trim().slice(0, 100) + (sql.trim().length > 100 ? "…" : ""),
-      ms,
-    }, ...prev.slice(0, 19)]);
-    setRunning(false);
+    try {
+      const result = await runQuery({ sql }).unwrap();
+      setResults(result);
+      setTrinoOk(true);
+      setHistory(prev => [{
+        ts: new Date().toLocaleTimeString(),
+        query: sql.trim().slice(0, 100) + (sql.trim().length > 100 ? "…" : ""),
+        ms: result.ms,
+      }, ...prev.slice(0, 19)]);
+    } catch (err: unknown) {
+      const apiErr = err as { data?: { detail?: string }; status?: number };
+      const msg = apiErr?.data?.detail ?? "Query failed. Check your SQL and try again.";
+      setQueryError(msg);
+      if (apiErr?.status === 503) setTrinoOk(false);
+    } finally {
+      setRunning(false);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -270,12 +274,24 @@ const StorageQuery = () => {
         <div className="flex items-center gap-3">
           <h1 className="text-sm font-semibold text-gray-800">Query Console</h1>
           <span className="text-gray-300">·</span>
-          <span className="text-xs font-mono text-gray-500">iceberg.verdantiq</span>
+          <span className="text-xs font-mono text-gray-500">iceberg.sensors</span>
           {/* Connection status */}
-          <span className="flex items-center gap-1.5 text-xs text-amber-600 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-            Trino not connected
-          </span>
+          {trinoOk === true ? (
+            <span className="flex items-center gap-1.5 text-xs text-emerald-600 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              Trino connected
+            </span>
+          ) : trinoOk === false ? (
+            <span className="flex items-center gap-1.5 text-xs text-red-600 bg-red-50 border border-red-200 px-2.5 py-0.5 rounded-full">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
+              Trino unavailable
+            </span>
+          ) : (
+            <span className="flex items-center gap-1.5 text-xs text-amber-600 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+              Trino not connected
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {!billingActive && (
@@ -395,13 +411,22 @@ const StorageQuery = () => {
             <div className="flex-1 overflow-auto">
               {activeTab === "results" && (
                 <>
-                  {!results && !running && (
+                  {!results && !running && !queryError && (
                     <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-400">
                       <svg className="w-10 h-10 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
                           d="M3 10h18M3 14h18M10 4v16M14 4v16M5 4h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z" />
                       </svg>
                       <p className="text-sm text-gray-400">Run a query to see results</p>
+                    </div>
+                  )}
+                  {queryError && !running && (
+                    <div className="flex flex-col items-center justify-center h-full gap-3 px-8">
+                      <svg className="w-8 h-8 text-red-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                          d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                      </svg>
+                      <p className="text-sm text-red-600 font-medium text-center">{queryError}</p>
                     </div>
                   )}
                   {running && (
@@ -436,7 +461,6 @@ const StorageQuery = () => {
                                     d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
                                 </svg>
                                 <p>0 rows returned</p>
-                                <p className="text-xs text-gray-300">Trino + Iceberg integration pending</p>
                               </div>
                             </td>
                           </tr>
@@ -445,7 +469,9 @@ const StorageQuery = () => {
                             <td className="px-4 py-2 text-xs text-gray-300 tabular-nums">{ri + 1}</td>
                             {row.map((cell, ci) => (
                               <td key={ci} className="px-4 py-2 text-xs text-gray-700 font-mono whitespace-nowrap max-w-xs truncate">
-                                {cell}
+                                {cell === null
+                                  ? <span className="text-gray-300 italic">NULL</span>
+                                  : cell}
                               </td>
                             ))}
                           </tr>
