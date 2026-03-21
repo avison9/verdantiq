@@ -234,6 +234,7 @@ const SensorConnections = () => {
         tenant_id:   sensor.tenant_id,
         sensor_type: sensor.sensor_type,
         device_id:   sid,
+        farm_id:     sensor.farm_id ?? null,
         location: {
           latitude:  parseFloat(String(sensor.sensor_metadata?.latitude  ?? 0)) || 0,
           longitude: parseFloat(String(sensor.sensor_metadata?.longitude ?? 0)) || 0,

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
 import usePageTitle from "../../hooks/usePageTitle";
 import {
@@ -6,7 +6,7 @@ import {
   useRunQueryMutation,
   useGetQuerySchemaQuery,
   type QueryResult,
-  type CatalogEntry,
+  type SchemaTree,
 } from "../../redux/apislices/userDashboardApiSlice";
 
 const PLACEHOLDER_SQL = `-- Select a table from the explorer on the left,
@@ -22,21 +22,24 @@ type ResultSet = QueryResult;
 // ── Schema Explorer ────────────────────────────────────────────────────────────
 
 function SchemaExplorer({
+  schemaTree,
+  isLoading,
+  isError,
+  refetch,
   onInsert,
-  onCatalogLabel,
 }: {
+  schemaTree: SchemaTree | undefined;
+  isLoading: boolean;
+  isError: boolean;
+  refetch: () => void;
   onInsert: (text: string) => void;
-  onCatalogLabel: (label: string) => void;
 }) {
-  const { data: schemaTree, isLoading, isError, refetch } = useGetQuerySchemaQuery();
-
-  const catalogs: CatalogEntry[] = schemaTree?.catalogs ?? [];
+  const catalogs = schemaTree?.catalogs ?? [];
 
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [search, setSearch] = useState("");
 
-  // Auto-expand the first catalog and its first schema once data loads.
-  // Also push the catalog label up to the parent for the top-bar.
+  // Auto-expand first catalog and first schema whenever schema data changes.
   useEffect(() => {
     if (!catalogs.length) return;
     const first = catalogs[0];
@@ -45,8 +48,6 @@ function SchemaExplorer({
       init[`${first.name}.${first.schemas[0].name}`] = true;
     }
     setExpanded(init);
-    const firstSchema = first.schemas[0]?.name;
-    onCatalogLabel(firstSchema ? `${first.name}.${firstSchema}` : first.name);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schemaTree]);
 
@@ -104,12 +105,24 @@ function SchemaExplorer({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
                 d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
             </svg>
-            <p className="text-xs text-red-500 text-center">Trino unavailable</p>
+            <p className="text-xs text-red-500 text-center">Data Warehouse unavailable</p>
             <button onClick={() => refetch()} className="text-xs text-emerald-600 hover:underline">Retry</button>
           </div>
         )}
 
-        {/* Tree */}
+        {/* Empty — connected but nothing in Iceberg yet */}
+        {!isLoading && !isError && catalogs.length === 0 && (
+          <div className="px-4 py-6 text-center">
+            <svg className="w-6 h-6 text-gray-200 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+            </svg>
+            <p className="text-xs text-gray-400">No schemas found.</p>
+            <p className="text-xs text-gray-300 mt-1">Send sensor data to populate Iceberg.</p>
+          </div>
+        )}
+
+        {/* Catalog → Schema → Table → Column tree */}
         {!isLoading && !isError && catalogs.map(cat => (
           <div key={cat.name}>
             <button
@@ -197,17 +210,7 @@ function SchemaExplorer({
           </div>
         ))}
 
-        {/* Empty state — Trino connected but no catalogs/tables yet */}
-        {!isLoading && !isError && catalogs.length === 0 && (
-          <div className="px-4 py-6 text-center">
-            <svg className="w-6 h-6 text-gray-200 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
-            </svg>
-            <p className="text-xs text-gray-400">No schemas found.</p>
-            <p className="text-xs text-gray-300 mt-1">Send sensor data to populate Iceberg.</p>
-          </div>
-        )}
+        {/* Connected but no tables yet */}
         {!isLoading && !isError && catalogs.length > 0 &&
           catalogs.every(c => c.schemas.every(s => s.tables.length === 0)) && (
           <div className="px-4 py-6 text-center">
@@ -228,32 +231,53 @@ const StorageQuery = () => {
   const billingActive = billing?.status === "active";
   const [runQuery] = useRunQueryMutation();
 
-  const [sql, setSql]                   = useState(PLACEHOLDER_SQL);
-  const [running, setRunning]           = useState(false);
-  const [results, setResults]           = useState<ResultSet | null>(null);
-  const [queryError, setQueryError]     = useState<string | null>(null);
-  const [trinoOk, setTrinoOk]           = useState<boolean | null>(null);
-  const [activeTab, setActiveTab]       = useState<"results" | "history">("results");
-  const [history, setHistory]           = useState<{ ts: string; query: string; ms: number }[]>([]);
-  const [catalogLabel, setCatalogLabel] = useState<string>("");
+  // Schema fetch — drives both the explorer and the connection status badge.
+  const {
+    data: schemaTree,
+    isLoading: schemaLoading,
+    isError: schemaError,
+    isSuccess: schemaOk,
+    refetch: refetchSchema,
+  } = useGetQuerySchemaQuery();
+
+  // Connection status: true = connected (schema loaded), false = unreachable,
+  // null = still loading on first fetch. Manual query results can also update it.
+  const [queryTrinoFailed, setQueryTrinoFailed] = useState(false);
+  const trinoOk: boolean | null = schemaLoading && !schemaTree
+    ? null
+    : schemaError || queryTrinoFailed
+    ? false
+    : schemaOk
+    ? true
+    : null;
+
+  // Catalog label — derived from live schema data: "iceberg · kafka" etc.
+  const catalogLabel = useMemo(() => {
+    if (!schemaTree?.catalogs.length) return "";
+    return schemaTree.catalogs.map(c => c.name).join(" · ");
+  }, [schemaTree]);
+
+  const [sql, setSql]             = useState(PLACEHOLDER_SQL);
+  const [running, setRunning]     = useState(false);
+  const [results, setResults]     = useState<ResultSet | null>(null);
+  const [queryError, setQueryError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"results" | "history">("results");
+  const [history, setHistory]     = useState<{ ts: string; query: string; ms: number }[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleInsert = (text: string) => {
     const el = textareaRef.current;
     if (!el) return;
-    // If the inserted text looks like a fully-qualified table name (x.y.z),
-    // replace the entire editor with a ready-to-run SELECT template.
+    // Full FQN (catalog.schema.table) → replace editor with ready-to-run template
     const isFqn = (text.match(/\./g) ?? []).length === 2;
     if (isFqn) {
-      const template = `SELECT *\nFROM ${text}\nWHERE tenant_id = current_user_tenant()\nLIMIT 50;`;
-      setSql(template);
+      setSql(`SELECT *\nFROM ${text}\nWHERE tenant_id = current_user_tenant()\nLIMIT 50`);
       requestAnimationFrame(() => { el.focus(); });
       return;
     }
     const start = el.selectionStart;
     const end   = el.selectionEnd;
-    const next  = sql.slice(0, start) + text + sql.slice(end);
-    setSql(next);
+    setSql(v => v.slice(0, start) + text + v.slice(end));
     requestAnimationFrame(() => {
       el.focus();
       el.selectionStart = el.selectionEnd = start + text.length;
@@ -265,11 +289,11 @@ const StorageQuery = () => {
     setRunning(true);
     setResults(null);
     setQueryError(null);
+    setQueryTrinoFailed(false);
     setActiveTab("results");
     try {
       const result = await runQuery({ sql }).unwrap();
       setResults(result);
-      setTrinoOk(true);
       setHistory(prev => [{
         ts: new Date().toLocaleTimeString(),
         query: sql.trim().slice(0, 100) + (sql.trim().length > 100 ? "…" : ""),
@@ -279,7 +303,7 @@ const StorageQuery = () => {
       const apiErr = err as { data?: { detail?: string }; status?: number };
       const msg = apiErr?.data?.detail ?? "Query failed. Check your SQL and try again.";
       setQueryError(msg);
-      if (apiErr?.status === 503) setTrinoOk(false);
+      if (apiErr?.status === 503) setQueryTrinoFailed(true);
     } finally {
       setRunning(false);
     }
@@ -309,25 +333,27 @@ const StorageQuery = () => {
       <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 bg-white shrink-0">
         <div className="flex items-center gap-3">
           <h1 className="text-sm font-semibold text-gray-800">Query Console</h1>
-          <span className="text-gray-300">·</span>
           {catalogLabel && (
-            <span className="text-xs font-mono text-gray-500">{catalogLabel}</span>
+            <>
+              <span className="text-gray-300">·</span>
+              <span className="text-xs font-mono text-gray-500">{catalogLabel}</span>
+            </>
           )}
-          {/* Connection status */}
+          {/* Connection badge — driven by schema fetch result */}
           {trinoOk === true ? (
             <span className="flex items-center gap-1.5 text-xs text-emerald-600 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              Trino connected
+              Data Warehouse connected
             </span>
           ) : trinoOk === false ? (
             <span className="flex items-center gap-1.5 text-xs text-red-600 bg-red-50 border border-red-200 px-2.5 py-0.5 rounded-full">
               <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
-              Trino unavailable
+              Data Warehouse unavailable
             </span>
           ) : (
             <span className="flex items-center gap-1.5 text-xs text-amber-600 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-              Trino not connected
+              Connecting to Data Warehouse…
             </span>
           )}
         </div>
@@ -367,9 +393,15 @@ const StorageQuery = () => {
       {/* ── Body: schema | editor + results ─────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden">
 
-        {/* Left: Schema Explorer */}
+        {/* Left: Schema Explorer — receives schema data from parent */}
         <div className="w-56 shrink-0 overflow-hidden flex flex-col">
-          <SchemaExplorer onInsert={handleInsert} onCatalogLabel={setCatalogLabel} />
+          <SchemaExplorer
+            schemaTree={schemaTree}
+            isLoading={schemaLoading}
+            isError={schemaError}
+            refetch={refetchSchema}
+            onInsert={handleInsert}
+          />
         </div>
 
         {/* Right: Editor + Results */}
@@ -377,7 +409,6 @@ const StorageQuery = () => {
 
           {/* Editor section */}
           <div className="flex flex-col border-b border-gray-200" style={{ minHeight: "220px", maxHeight: "50%" }}>
-            {/* Editor tab bar */}
             <div className="flex items-center gap-0 border-b border-gray-200 bg-gray-50 px-4 shrink-0">
               <div className="flex items-center gap-1.5 px-3 py-2 border-b-2 border-blue-600 bg-white -mb-px">
                 <svg className="w-3 h-3 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -388,16 +419,13 @@ const StorageQuery = () => {
               </div>
             </div>
 
-            {/* Editor area with line numbers */}
             <div className="flex flex-1 overflow-auto bg-white">
-              {/* Line numbers */}
               <div className="shrink-0 select-none bg-gray-50 border-r border-gray-100 px-3 py-4 text-right"
                 aria-hidden="true">
                 {Array.from({ length: lineCount }, (_, i) => (
                   <div key={i} className="text-xs leading-6 text-gray-300 font-mono">{i + 1}</div>
                 ))}
               </div>
-              {/* Textarea */}
               <textarea
                 ref={textareaRef}
                 value={sql}
@@ -413,7 +441,6 @@ const StorageQuery = () => {
 
           {/* Results section */}
           <div className="flex-1 flex flex-col overflow-hidden bg-white">
-            {/* Results tab bar */}
             <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-4 shrink-0">
               <div className="flex items-center gap-0">
                 {(["results", "history"] as const).map(tab => (
@@ -445,7 +472,6 @@ const StorageQuery = () => {
               )}
             </div>
 
-            {/* Results / History content */}
             <div className="flex-1 overflow-auto">
               {activeTab === "results" && (
                 <>
