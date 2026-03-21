@@ -182,17 +182,19 @@ def test_connect_with_retry_succeeds_after_transient_error():
 # ── tenant/crud.py coverage ──────────────────────────────────────────────────
 
 def test_update_sensor_count_no_billing(db_session):
-    """update_sensor_count with no billing row returns None gracefully."""
+    """update_sensor_count with no billing row returns (None, False) gracefully."""
     import crud
-    result = crud.update_sensor_count(db_session, tenant_id=999999, delta=5)
-    assert result is None
+    billing, newly_suspended = crud.update_sensor_count(db_session, tenant_id=999999, delta=5)
+    assert billing is None
+    assert newly_suspended is False
 
 
 def test_update_message_count_no_billing(db_session):
-    """update_message_count with no billing row returns None gracefully."""
+    """update_message_count with no billing row returns (None, False) gracefully."""
     import crud
-    result = crud.update_message_count(db_session, tenant_id=999999, increment=100)
-    assert result is None
+    billing, newly_suspended = crud.update_message_count(db_session, tenant_id=999999, increment=100)
+    assert billing is None
+    assert newly_suspended is False
 
 
 def test_calculate_next_due_date_quarterly():
