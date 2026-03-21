@@ -134,6 +134,7 @@ def ensure_namespace(spark: SparkSession) -> None:
 _TABLE_DDL_TEMPLATE = """
 CREATE TABLE IF NOT EXISTS iceberg.sensors.{table_name} (
     tenant_id   STRING  COMMENT 'Tenant identifier',
+    farm_id     STRING  COMMENT 'Farm identifier',
     sensor_id   STRING  COMMENT 'Sensor identifier',
     device_id   STRING  COMMENT 'Physical device ID',
     event_time  TIMESTAMP COMMENT 'Event timestamp from device',
@@ -146,7 +147,7 @@ CREATE TABLE IF NOT EXISTS iceberg.sensors.{table_name} (
     hour        INT
 )
 USING iceberg
-PARTITIONED BY (tenant_id, year, month, day, hour)
+PARTITIONED BY (tenant_id, farm_id, year, month, day, hour)
 TBLPROPERTIES (
     'write.format.default'        = 'avro',
     'write.delete.format.default' = 'avro',
@@ -163,6 +164,11 @@ def ensure_table(spark: SparkSession, sensor_type: str) -> str:
     table_name  = f"{canonical}_data"
     full_name   = f"iceberg.sensors.{table_name}"
     spark.sql(_TABLE_DDL_TEMPLATE.format(table_name=table_name))
+    # Migrate existing tables that predate the farm_id column.
+    try:
+        spark.sql(f"ALTER TABLE {full_name} ADD COLUMN IF NOT EXISTS farm_id STRING")
+    except Exception:
+        pass  # column already exists or table just created — safe to ignore
     log.info("Ensured table: %s", full_name)
     return full_name
 
@@ -175,6 +181,7 @@ _ENVELOPE_SCHEMA = StructType([
     StructField("timestamp",   StringType()),
     StructField("sensor_id",   StringType()),
     StructField("tenant_id",   StringType()),
+    StructField("farm_id",     StringType()),
     StructField("sensor_type", StringType()),
 ])
 
@@ -213,6 +220,7 @@ def _process_batch(df: DataFrame, batch_id: int, spark: SparkSession) -> None:
                     coalesce(col("topic_parts").getItem(1), col("env.tenant_id")))
         .withColumn("sensor_id",
                     coalesce(col("topic_parts").getItem(2), col("env.sensor_id")))
+        .withColumn("farm_id", col("env.farm_id"))
     )
 
     # ── 2. Group by topic (= per sensor) ───────────────────────────────────
@@ -263,6 +271,7 @@ def _process_batch(df: DataFrame, batch_id: int, spark: SparkSession) -> None:
             .withColumn("hour",  hour(col("event_time")))
             .select(
                 col("tenant_id"),
+                col("farm_id"),
                 col("sensor_id"),
                 col("device_id"),
                 col("event_time"),

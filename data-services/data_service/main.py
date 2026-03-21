@@ -152,6 +152,7 @@ class ConnectRequest(BaseModel):
     tenant_id:   str
     sensor_type: str
     device_id:   str
+    farm_id:     str | None = None
     location:    dict = {}
 
     model_config = {"coerce_numbers_to_str": True}
@@ -287,6 +288,7 @@ async def connect_sensor(body: ConnectRequest):
             sensor_type=body.sensor_type,
             device_id=body.device_id,
             location=body.location,
+            farm_id=body.farm_id,
             interval=0.5,
             mqtt_host=MQTT_HOST,
             mqtt_port=MQTT_PORT,

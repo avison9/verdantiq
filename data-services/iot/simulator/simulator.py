@@ -390,11 +390,13 @@ class MQTTSensorPublisher:
         device_id: str,
         location: dict,
         *,
+        farm_id: str | None = None,
         interval: float = 2.0,
         mqtt_host: str | None = None,
         mqtt_port: int | None = None,
     ):
         self.tenant_id   = tenant_id
+        self.farm_id     = farm_id
         self.sensor_id   = sensor_id
         self.sensor_type = sensor_type
         self.device_id   = device_id
@@ -447,6 +449,7 @@ class MQTTSensorPublisher:
                     location=self.location,
                 )
                 payload["tenant_id"] = self.tenant_id
+                payload["farm_id"]   = self.farm_id
                 payload["sensor_id"] = self.sensor_id
                 message = json.dumps(payload)
                 result  = self._client.publish(self.topic, message, qos=1)
