@@ -173,9 +173,11 @@ class SensorDataGenerator:
 
 class MQTTSensorPublisher:
     def __init__(self, tenant_id: str, sensor_id: str, sensor_type: str,
-                 device_id: str, location: dict, *, interval: float = 2.0,
+                 device_id: str, location: dict, *, farm_id: str | None = None,
+                 interval: float = 2.0,
                  mqtt_host: str | None = None, mqtt_port: int | None = None):
         self.tenant_id   = tenant_id
+        self.farm_id     = farm_id
         self.sensor_id   = sensor_id
         self.sensor_type = sensor_type
         self.device_id   = device_id
@@ -242,6 +244,7 @@ class MQTTSensorPublisher:
                 payload = self._gen.generate(self.sensor_type, device_id=self.device_id,
                                              location=self.location)
                 payload["tenant_id"]   = self.tenant_id
+                payload["farm_id"]     = self.farm_id
                 payload["sensor_id"]   = self.sensor_id
                 payload["sensor_type"] = self.sensor_type
                 payload["hardware_info"] = {
