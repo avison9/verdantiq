@@ -475,6 +475,17 @@ def delete_sensor_storage(db: Session, tenant_id: int, storage_id: str) -> bool:
 def create_farm(db: Session, tenant_id: int, data: schemas.FarmCreate) -> models.Farm:
     farm = models.Farm(tenant_id=tenant_id, **data.model_dump(exclude_none=False))
     db.add(farm)
+    db.flush()  # get farm_id before commit
+
+    # Seed a CropManagement record for each crop selected during farm creation
+    # so they immediately appear in the crop management page.
+    for crop_name in (data.crops or []):
+        db.add(models.CropManagement(
+            farm_id=farm.farm_id,
+            tenant_id=tenant_id,
+            crop_name=crop_name,
+        ))
+
     db.commit()
     db.refresh(farm)
     return farm
@@ -508,8 +519,32 @@ def update_farm(
     farm = get_farm(db, tenant_id, farm_id)
     if not farm:
         return None
-    for field, value in data.model_dump(exclude_unset=True).items():
+
+    update_dict = data.model_dump(exclude_unset=True)
+    for field, value in update_dict.items():
         setattr(farm, field, value)
+
+    # If crops list was updated, seed CropManagement records for any new crops.
+    # Existing records are never deleted — removals from Farm.crops only affect
+    # the farm metadata, not real planting/management data.
+    if "crops" in update_dict and update_dict["crops"]:
+        existing_names = {
+            row.crop_name
+            for row in db.query(models.CropManagement.crop_name)
+            .filter(
+                models.CropManagement.farm_id == farm_id,
+                models.CropManagement.tenant_id == tenant_id,
+            )
+            .all()
+        }
+        for crop_name in update_dict["crops"]:
+            if crop_name not in existing_names:
+                db.add(models.CropManagement(
+                    farm_id=farm_id,
+                    tenant_id=tenant_id,
+                    crop_name=crop_name,
+                ))
+
     db.commit()
     db.refresh(farm)
     return farm
