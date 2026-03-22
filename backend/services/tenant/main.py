@@ -67,6 +67,25 @@ async def lifespan(app: FastAPI):
                 END IF;
             END $$;
         """))
+        # Migrate query_rate from old per-query default (0.001) to per-QU rate (0.01)
+        conn.execute(text("""
+            UPDATE billing_rates SET query_rate = 0.01 WHERE query_rate = 0.001
+        """))
+        # Add 'usage' to transactiontype enum for query ledger records
+        conn.execute(text("""
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'transactiontype') THEN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_enum
+                        WHERE enumlabel = 'usage'
+                          AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'transactiontype')
+                    ) THEN
+                        ALTER TYPE transactiontype ADD VALUE 'usage';
+                    END IF;
+                END IF;
+            END $$;
+        """))
         conn.commit()
     yield
 
@@ -226,6 +245,18 @@ async def update_billing_rates(
     return crud.update_billing_rate(db, body)
 
 
+@app.get("/billings/query-stats", response_model=schemas.QueryStatsResponse)
+async def get_query_stats(
+    sensor_id: str | None = Query(default=None),
+    farm_id:   str | None = Query(default=None),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return aggregated query spend (count, QU, cost) for a sensor or farm.
+    Pass sensor_id to scope by sensor; farm_id as fallback scope."""
+    return crud.get_query_stats(db, current_user.tenant_id, sensor_id, farm_id)
+
+
 @app.get("/billings/transactions/", response_model=schemas.TransactionPage)
 async def get_transactions(
     page: int = Query(default=1, ge=1),
@@ -280,6 +311,29 @@ async def update_message_count(data: schemas.MessageCountUpdate, db: Session = D
     if newly_suspended:
         await notify_sensor_suspend(data.tenant_id)
     return {"status": "ok"}
+
+
+@app.post("/internal/billings/query-charge")
+async def charge_query(data: schemas.QueryChargeRequest, db: Session = Depends(get_db)):
+    """Add a query charge to the tenant's running cost and log a USAGE transaction.
+    Called by the sensor service after every successful Trino query execution.
+    """
+    _, newly_suspended = crud.charge_query(
+        db, data.tenant_id, data.qu, data.cost, data.sql_preview
+    )
+    if newly_suspended:
+        await notify_sensor_suspend(data.tenant_id)
+    return {"status": "ok"}
+
+
+@app.get("/billings/cycle-detail", response_model=schemas.CycleDetailResponse)
+async def get_cycle_detail(
+    usage_period: str = Query(..., description="Billing period, e.g. 2026-03"),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return the full breakdown for a billing cycle — message summary + per-query USAGE items."""
+    return crud.get_cycle_detail(db, current_user.tenant_id, usage_period)
 
 
 @app.patch("/internal/tenants/{tenant_id}/iot-devices")

@@ -658,7 +658,7 @@ async def get_query_schema(
         "ORDER BY table_schema, table_name, ordinal_position"
     )
     try:
-        _, rows = crud.run_query(_sql, current_user.tenant_id)
+        _, rows, _ = crud.run_query(_sql, current_user.tenant_id)
     except trino.exceptions.DatabaseError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -698,7 +698,7 @@ async def execute_query(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Active billing required to run queries")
     t0 = time.monotonic()
     try:
-        columns, rows = crud.run_query(body.sql, current_user.tenant_id)
+        columns, rows, trino_stats = crud.run_query(body.sql, current_user.tenant_id)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     except trino.exceptions.DatabaseError as exc:
@@ -708,7 +708,24 @@ async def execute_query(
         )
     ms = int((time.monotonic() - t0) * 1000)
 
-    # Persist history + last SQL to Redis (non-fatal if Redis is down)
+    # ── Compute QU and deduct charge from tenant billing (best-effort) ──────
+    qu   = crud.calculate_qu(trino_stats)
+    cost = round(qu * crud.QUERY_RATE_PER_QU, 6)
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(
+                f"{settings.TENANT_SERVICE_URL}/internal/billings/query-charge",
+                json={
+                    "tenant_id":   current_user.tenant_id,
+                    "qu":          qu,
+                    "cost":        cost,
+                    "sql_preview": body.sql[:120],
+                },
+            )
+    except httpx.RequestError as exc:
+        _log.warning("Failed to record query charge for tenant %s: %s", current_user.tenant_id, exc)
+
+    # ── Persist history + last SQL to Redis (non-fatal if Redis is down) ────
     if _redis:
         try:
             hist_key = f"viq:query:history:{current_user.tenant_id}:{current_user.user_id}"
@@ -717,6 +734,8 @@ async def execute_query(
                 "ts":  datetime.now(timezone.utc).isoformat(),
                 "sql": body.sql,
                 "ms":  ms,
+                "qu":  qu,
+                "cost": cost,
             })
             await _redis.lpush(hist_key, item)
             await _redis.ltrim(hist_key, 0, _HIST_MAX - 1)
@@ -725,7 +744,7 @@ async def execute_query(
         except Exception as exc:
             _log.warning("Failed to save query history to Redis: %s", exc)
 
-    return schemas.QueryResult(columns=columns, rows=rows, ms=ms)
+    return schemas.QueryResult(columns=columns, rows=rows, ms=ms, qu=qu, cost=cost)
 
 
 @app.get("/query/history", response_model=schemas.QueryHistory)
