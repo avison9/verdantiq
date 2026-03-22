@@ -212,7 +212,7 @@ export interface BillingProcessCycle {
 export interface Transaction {
   id: number;
   billing_id: number;
-  type: "credit" | "debit";
+  type: "credit" | "debit" | "usage";
   amount: number;
   balance_after: number;
   description: string;
@@ -285,6 +285,8 @@ export interface QueryResult {
   columns: string[];
   rows: (string | null)[][];
   ms: number;
+  qu: number;
+  cost: number;
 }
 
 export interface SchemaColumn { name: string; type: string; }
@@ -293,9 +295,35 @@ export interface SchemaEntry  { name: string; tables: SchemaTable[]; }
 export interface CatalogEntry { name: string; schemas: SchemaEntry[]; }
 export interface SchemaTree   { catalogs: CatalogEntry[]; }
 
-export interface QueryHistoryItem { ts: string; sql: string; ms: number; }
+export interface QueryHistoryItem { ts: string; sql: string; ms: number; qu: number; cost: number; }
 export interface QueryHistory     { items: QueryHistoryItem[]; }
 export interface LastSqlResponse  { sql: string | null; }
+
+export interface QueryStatsResponse {
+  query_count: number;
+  total_qu: number;
+  total_cost: number;
+}
+
+export interface UsageLineItem {
+  id: number;
+  reference?: string;
+  description: string;
+  amount: number;
+  data_points?: number;
+  created_at: string;
+}
+
+export interface CycleDetailResponse {
+  usage_period: string;
+  cycle_amount: number;
+  cycle_date?: string;
+  message_count: number;
+  message_cost: number;
+  query_items: UsageLineItem[];
+  query_total_cost: number;
+  query_total_qu: number;
+}
 
 export const userDashboardApiSlice = baseApiSlice.injectEndpoints({
   endpoints: (builder) => ({
@@ -530,9 +558,24 @@ export const userDashboardApiSlice = baseApiSlice.injectEndpoints({
     }),
     getQueryHistory: builder.query<QueryHistory, void>({
       query: () => `${APIendPoints.query}/history`,
+      keepUnusedDataFor: 0,
     }),
     getLastSql: builder.query<LastSqlResponse, void>({
       query: () => `${APIendPoints.query}/last-sql`,
+      keepUnusedDataFor: 0,
+    }),
+    getQueryStats: builder.query<QueryStatsResponse, { sensor_id?: string; farm_id?: string }>({
+      query: ({ sensor_id, farm_id } = {}) => {
+        const params = new URLSearchParams();
+        if (sensor_id) params.set("sensor_id", sensor_id);
+        else if (farm_id) params.set("farm_id", farm_id);
+        return `${APIendPoints.billings}/query-stats?${params.toString()}`;
+      },
+    }),
+    getCycleDetail: builder.query<CycleDetailResponse, string>({
+      query: (usage_period) =>
+        `${APIendPoints.billings}/cycle-detail?usage_period=${encodeURIComponent(usage_period)}`,
+      keepUnusedDataFor: 0,
     }),
   }),
 });
@@ -574,4 +617,6 @@ export const {
   useGetQuerySchemaQuery,
   useGetQueryHistoryQuery,
   useGetLastSqlQuery,
+  useGetQueryStatsQuery,
+  useGetCycleDetailQuery,
 } = userDashboardApiSlice;

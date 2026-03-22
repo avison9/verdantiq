@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import usePageTitle from "../../hooks/usePageTitle";
 import { useGetTransactionsQuery } from "../../redux/apislices/userDashboardApiSlice";
 import type { Transaction } from "../../redux/apislices/userDashboardApiSlice";
@@ -98,7 +99,9 @@ function TransactionDetail({
               {tx.sensor_name && <Row label="Sensor" value={tx.sensor_name} />}
               {tx.usage_period && <Row label="Usage period" value={tx.usage_period} />}
               {tx.data_points != null && (
-                <Row label="Data points" value={tx.data_points.toLocaleString()} />
+                tx.reference?.startsWith("QRY-")
+                  ? <Row label="Query Units (QU)" value={tx.data_points.toLocaleString()} />
+                  : <Row label="Data points" value={tx.data_points.toLocaleString()} />
               )}
             </>
           )}
@@ -136,6 +139,7 @@ function Row({
 
 const Transactions = () => {
   usePageTitle("Transactions — VerdantIQ");
+  const navigate = useNavigate();
 
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState<(typeof PER_PAGE_OPTIONS)[number]>(20);
@@ -213,14 +217,26 @@ const Transactions = () => {
                             className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${
                               isCredit
                                 ? "bg-emerald-100 text-emerald-700"
+                                : tx.type === "usage"
+                                ? "bg-gray-100 text-gray-500"
+                                : tx.reference?.startsWith("QRY-")
+                                ? "bg-purple-100 text-purple-700"
                                 : "bg-red-100 text-red-600"
                             }`}
                           >
-                            {isCredit ? "↑" : "↓"} {isCredit ? "Credit" : "Debit"}
+                            {isCredit ? "↑ Credit" : tx.type === "usage" ? "· Usage" : tx.reference?.startsWith("QRY-") ? "⬡ Query" : "↓ Debit"}
                           </span>
                         </td>
-                        <td className="px-6 py-3 text-gray-700 max-w-[240px] truncate">
-                          {tx.description}
+                        <td className="px-6 py-3 text-gray-700 max-w-[240px]">
+                          <p className="truncate">{tx.description}</p>
+                          {tx.reference?.startsWith("CYCLE-") && tx.usage_period && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); navigate(`/billing/cycle-detail/${tx.usage_period}`); }}
+                              className="text-xs text-purple-600 hover:text-purple-700 font-medium mt-0.5"
+                            >
+                              View breakdown →
+                            </button>
+                          )}
                         </td>
                         <td
                           className={`px-6 py-3 text-right font-semibold tabular-nums ${

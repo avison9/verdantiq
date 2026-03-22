@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import usePageTitle from "../../hooks/usePageTitle";
 import { useGetMeQuery } from "../../redux/apislices/authApiSlice";
-import { useGetSensorsQuery } from "../../redux/apislices/userDashboardApiSlice";
+import { useGetSensorsQuery, useGetQueryStatsQuery } from "../../redux/apislices/userDashboardApiSlice";
 import { useBillingRates } from "../../hooks/useBillingRates";
 
 const DATA_SERVICE_URL = import.meta.env.VITE_DATA_SERVICE_URL ?? "http://localhost:8090";
@@ -16,7 +16,8 @@ const RunningCostDetail = () => {
     { tenant_id: me?.tenant_id ?? 0, per_page: 100 },
     { skip: !me, pollingInterval: 30_000 },
   );
-  const { message_rate, storage_rate, query_rate } = useBillingRates();
+  const { message_rate, storage_rate } = useBillingRates();
+  const { data: tenantQueryStats } = useGetQueryStatsQuery({});
   const [liveCounts, setLiveCounts] = useState<Record<string, number>>({});
 
   // Poll Kafka watermarks every 30 s for real-time message counts
@@ -53,7 +54,7 @@ const RunningCostDetail = () => {
 
   const totalMsgCost = sensorRows.reduce((s, r) => s + r.msgCost, 0);
   const totalStorageCost = sensorRows.reduce((s, r) => s + r.storageCost, 0);
-  const totalQueryCost = 0; // Trino integration pending
+  const totalQueryCost = tenantQueryStats?.total_cost ?? 0;
   const grandTotal = totalMsgCost + totalStorageCost + totalQueryCost;
 
   const pct = (val: number) => grandTotal > 0 ? ((val / grandTotal) * 100).toFixed(1) : "0.0";
@@ -105,7 +106,9 @@ const RunningCostDetail = () => {
           <p className="text-xl font-bold text-purple-600">${totalQueryCost.toFixed(2)}</p>
           <p className="text-xs text-gray-400 mt-1">{pct(totalQueryCost)}% of total</p>
           <CostBar value={totalQueryCost} color="bg-purple-500" />
-          <p className="text-xs text-gray-300 mt-2">@ ${query_rate}/query</p>
+          <p className="text-xs text-gray-300 mt-2">
+            {tenantQueryStats?.query_count ?? 0} queries · {(tenantQueryStats?.total_qu ?? 0).toFixed(2)} QU @ $0.01/QU
+          </p>
         </div>
       </div>
 
@@ -161,7 +164,7 @@ const RunningCostDetail = () => {
         <p className="font-semibold text-gray-700 mb-2">Billing Rates</p>
         <p>Message processing: <span className="font-mono">${message_rate}</span> per message</p>
         <p>Storage: <span className="font-mono">${storage_rate}</span> per GB per month — based on actual data stored in MinIO/S3</p>
-        <p>Queries (Trino): <span className="font-mono">${query_rate}</span> per query — integration coming soon</p>
+        <p>Analytics queries: <span className="font-mono">$0.01</span> per Query Unit (QU) — charged immediately per query execution</p>
         <p className="text-gray-400 pt-1">
           Storage cost is derived from <code className="bg-gray-100 px-1 rounded">sensor.storage_bytes</code>.
           A <span className="font-mono">~</span> indicator means the value is estimated (sensor has not reported bytes yet).
