@@ -321,11 +321,13 @@ const StorageQuery = () => {
       const result = await runQuery({ sql }).unwrap();
       setResults(result);
       setHistory(prev => [{
-        ts:   new Date().toISOString(),
-        sql:  sql.trim(),
-        ms:   result.ms,
-        qu:   result.qu,
-        cost: result.cost,
+        ts:      new Date().toISOString(),
+        sql:     sql.trim(),
+        ms:      result.ms,
+        qu:      result.qu,
+        cost:    result.cost,
+        columns: result.columns,
+        rows:    result.rows,
       }, ...prev.slice(0, 19)]);
     } catch (err: unknown) {
       const apiErr = err as { data?: { detail?: string }; status?: number };

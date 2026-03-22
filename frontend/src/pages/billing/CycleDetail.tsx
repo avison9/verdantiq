@@ -107,7 +107,7 @@ const CycleDetail = () => {
                           {item.description.replace(/^Query — [\d.]+ QU · /, "")}
                         </td>
                         <td className="px-6 py-3 text-right text-xs font-semibold text-amber-600">
-                          {(item.data_points ?? 0).toFixed ? (item.data_points ?? 0) : 0} QU
+                          {item.data_points ?? 0} QU
                         </td>
                         <td className="px-6 py-3 text-right text-xs font-semibold text-red-500 tabular-nums">
                           −${item.amount.toFixed(4)}
