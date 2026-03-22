@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 from typing import List, Optional
 import httpx
+import logging
 import time
 import trino.exceptions
 import models
@@ -476,10 +477,25 @@ async def internal_suspend_tenant(
     db: Session = Depends(get_db),
 ):
     """Called by tenant service when billing is auto-suspended due to overdrawn balance.
-    Marks all active sensors for the tenant as inactive and stamps billing_suspended metadata.
+    Marks all active sensors for the tenant as inactive, stamps billing_suspended metadata,
+    and stops their MQTT simulators in the data service.
     """
-    count = crud.suspend_tenant_sensors(db, body.tenant_id)
-    return {"suspended": count}
+    suspended_sensors = crud.suspend_tenant_sensors(db, body.tenant_id)
+    # Stop the running MQTT simulators for every suspended sensor — fire-and-forget per sensor
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        for sensor_id in suspended_sensors:
+            url = (
+                f"{settings.DATA_SERVICE_URL}/sensors"
+                f"/{body.tenant_id}/{sensor_id}/disconnect"
+            )
+            try:
+                await client.delete(url)
+            except Exception as exc:
+                # Simulator may already be stopped — log and continue
+                logging.getLogger(__name__).warning(
+                    "Failed to disconnect simulator for sensor %s: %s", sensor_id, exc
+                )
+    return {"suspended": len(suspended_sensors)}
 
 
 @app.post("/internal/sensors/{sensor_id}/messages")
