@@ -6,6 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 from typing import List, Optional
+import asyncio
 import httpx
 import json
 import logging
@@ -505,20 +506,25 @@ async def internal_suspend_tenant(
     and stops their MQTT simulators in the data service.
     """
     suspended_sensors = crud.suspend_tenant_sensors(db, body.tenant_id)
-    # Stop the running MQTT simulators for every suspended sensor — fire-and-forget per sensor
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        for sensor_id in suspended_sensors:
-            url = (
-                f"{settings.DATA_SERVICE_URL}/sensors"
-                f"/{body.tenant_id}/{sensor_id}/disconnect"
-            )
-            try:
+
+    # Disconnect all simulators in parallel — sequential disconnects block for
+    # N × (thread-join + bridge-unregister) seconds and can starve health checks.
+    async def _disconnect_one(sensor_id: str) -> None:
+        url = (
+            f"{settings.DATA_SERVICE_URL}/sensors"
+            f"/{body.tenant_id}/{sensor_id}/disconnect"
+        )
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
                 await client.delete(url)
-            except Exception as exc:
-                # Simulator may already be stopped — log and continue
-                logging.getLogger(__name__).warning(
-                    "Failed to disconnect simulator for sensor %s: %s", sensor_id, exc
-                )
+        except Exception as exc:
+            logging.getLogger(__name__).warning(
+                "Failed to disconnect simulator for sensor %s: %s", sensor_id, exc
+            )
+
+    if suspended_sensors:
+        await asyncio.gather(*[_disconnect_one(sid) for sid in suspended_sensors])
+
     return {"suspended": len(suspended_sensors)}
 
 

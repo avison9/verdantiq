@@ -315,7 +315,9 @@ async def disconnect_sensor(tenant_id: str, sensor_id: str):
     if not publisher:
         raise HTTPException(status_code=404, detail=f"Sensor {key} not connected")
 
-    publisher.stop()
+    # publisher.stop() joins a daemon thread — must run in executor to avoid
+    # blocking the uvicorn event loop (and failing Docker health checks).
+    await asyncio.get_event_loop().run_in_executor(None, publisher.stop)
 
     mqtt_topic = f"verdantiq/{tenant_id}/{sensor_id}/data"
     await _unregister_bridge_route(mqtt_topic)
