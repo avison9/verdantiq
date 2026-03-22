@@ -731,11 +731,13 @@ async def execute_query(
             hist_key = f"viq:query:history:{current_user.tenant_id}:{current_user.user_id}"
             last_key = f"viq:query:last_sql:{current_user.tenant_id}:{current_user.user_id}"
             item = json.dumps({
-                "ts":  datetime.now(timezone.utc).isoformat(),
-                "sql": body.sql,
-                "ms":  ms,
-                "qu":  qu,
-                "cost": cost,
+                "ts":      datetime.now(timezone.utc).isoformat(),
+                "sql":     body.sql,
+                "ms":      ms,
+                "qu":      qu,
+                "cost":    cost,
+                "columns": columns,
+                "rows":    rows,
             })
             await _redis.lpush(hist_key, item)
             await _redis.ltrim(hist_key, 0, _HIST_MAX - 1)
@@ -778,6 +780,21 @@ async def get_last_sql(
     except Exception as exc:
         _log.warning("Failed to fetch last SQL from Redis: %s", exc)
         return schemas.LastSqlResponse(sql=None)
+
+
+@app.delete("/query/history", status_code=204)
+async def clear_query_history(
+    current_user: models.User = Depends(get_current_user),
+):
+    """Delete this user's query history and last-SQL from Redis. Called on logout."""
+    if not _redis:
+        return
+    try:
+        hist_key = f"viq:query:history:{current_user.tenant_id}:{current_user.user_id}"
+        last_key = f"viq:query:last_sql:{current_user.tenant_id}:{current_user.user_id}"
+        await _redis.delete(hist_key, last_key)
+    except Exception as exc:
+        _log.warning("Failed to clear query history from Redis: %s", exc)
 
 
 @app.get("/health")
