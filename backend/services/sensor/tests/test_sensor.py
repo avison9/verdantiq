@@ -925,8 +925,8 @@ def test_suspend_tenant_creates_audit_and_connection_events(client, mock_user, d
             models.SensorAuditLog.action == "status_changed",
         ).all()
         assert len(audit_rows) == 1
-        assert audit_rows[0].changes.get("reason") == "billing_suspended"
-        assert audit_rows[0].changes.get("new_status") == "inactive"
+        assert audit_rows[0].details.get("reason") == "billing_suspended"
+        assert audit_rows[0].details.get("new_status") == "inactive"
 
         # Connection event: sensor_suspended
         events = db_session.query(models.SensorConnectionEvent).filter(
