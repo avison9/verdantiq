@@ -5,7 +5,10 @@ import {
   useGetBillingQuery,
   useRunQueryMutation,
   useGetQuerySchemaQuery,
+  useGetQueryHistoryQuery,
+  useGetLastSqlQuery,
   type QueryResult,
+  type QueryHistoryItem,
   type SchemaTree,
 } from "../../redux/apislices/userDashboardApiSlice";
 
@@ -257,13 +260,36 @@ const StorageQuery = () => {
     return schemaTree.catalogs.map(c => c.name).join(" · ");
   }, [schemaTree]);
 
-  const [sql, setSql]             = useState(PLACEHOLDER_SQL);
-  const [running, setRunning]     = useState(false);
-  const [results, setResults]     = useState<ResultSet | null>(null);
+  // Restore last SQL and history from Redis cache (survives page navigation + refresh)
+  const { data: lastSqlData }    = useGetLastSqlQuery();
+  const { data: historyData }    = useGetQueryHistoryQuery();
+
+  const [sql, setSql]               = useState(PLACEHOLDER_SQL);
+  const [sqlInitialized, setSqlInitialized] = useState(false);
+  const [running, setRunning]       = useState(false);
+  const [results, setResults]       = useState<ResultSet | null>(null);
   const [queryError, setQueryError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"results" | "history">("results");
-  const [history, setHistory]     = useState<{ ts: string; query: string; ms: number }[]>([]);
+  const [activeTab, setActiveTab]   = useState<"results" | "history">("results");
+  const [history, setHistory]       = useState<QueryHistoryItem[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Seed SQL editor from Redis once (only if the user hasn't typed anything yet)
+  useEffect(() => {
+    if (!sqlInitialized && lastSqlData?.sql) {
+      setSql(lastSqlData.sql);
+      setSqlInitialized(true);
+    } else if (!sqlInitialized && lastSqlData !== undefined) {
+      // API responded but no saved SQL — mark initialized so we stop waiting
+      setSqlInitialized(true);
+    }
+  }, [lastSqlData, sqlInitialized]);
+
+  // Seed history from Redis on mount
+  useEffect(() => {
+    if (historyData?.items.length) {
+      setHistory(historyData.items);
+    }
+  }, [historyData]);
 
   const handleInsert = (text: string) => {
     const el = textareaRef.current;
@@ -295,9 +321,9 @@ const StorageQuery = () => {
       const result = await runQuery({ sql }).unwrap();
       setResults(result);
       setHistory(prev => [{
-        ts: new Date().toLocaleTimeString(),
-        query: sql.trim().slice(0, 100) + (sql.trim().length > 100 ? "…" : ""),
-        ms: result.ms,
+        ts:  new Date().toISOString(),
+        sql: sql.trim(),
+        ms:  result.ms,
       }, ...prev.slice(0, 19)]);
     } catch (err: unknown) {
       const apiErr = err as { data?: { detail?: string }; status?: number };
@@ -553,10 +579,14 @@ const StorageQuery = () => {
                       No query history yet
                     </div>
                   ) : history.map((h, i) => (
-                    <button key={i} onClick={() => { setSql(h.query); setActiveTab("results"); }}
+                    <button key={i} onClick={() => { setSql(h.sql); setActiveTab("results"); }}
                       className="w-full flex items-center gap-4 px-5 py-3 hover:bg-gray-50 transition-colors text-left">
-                      <span className="text-xs text-gray-400 font-mono shrink-0 w-16">{h.ts}</span>
-                      <span className="text-xs font-mono text-gray-700 flex-1 truncate">{h.query}</span>
+                      <span className="text-xs text-gray-400 font-mono shrink-0 w-16">
+                        {new Date(h.ts).toLocaleTimeString()}
+                      </span>
+                      <span className="text-xs font-mono text-gray-700 flex-1 truncate">
+                        {h.sql.slice(0, 100)}{h.sql.length > 100 ? "…" : ""}
+                      </span>
                       <span className="text-xs text-emerald-600 shrink-0">{h.ms} ms</span>
                     </button>
                   ))}
