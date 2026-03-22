@@ -503,7 +503,7 @@ const SetupBilling = () => {
   const handleFrequencyChange = async (freq: string) => {
     setFreqValue(freq);
     try {
-      await updateFrequency({ frequency: freq as "weekly" | "monthly" | "quarterly" | "yearly" }).unwrap();
+      await updateFrequency({ frequency: freq as "daily" | "weekly" | "monthly" | "quarterly" | "yearly" }).unwrap();
       toast.success(`Billing frequency updated to ${freq}`);
     } catch {
       toast.error("Failed to update billing frequency");
@@ -682,6 +682,7 @@ const SetupBilling = () => {
                       disabled={freqLoading}
                       className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white disabled:opacity-60"
                     >
+                      <option value="daily">Daily</option>
                       <option value="weekly">Weekly</option>
                       <option value="monthly">Monthly</option>
                       <option value="quarterly">Quarterly</option>

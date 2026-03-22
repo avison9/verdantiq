@@ -202,7 +202,7 @@ export interface BillingTopUp {
 }
 
 export interface BillingFrequencyUpdate {
-  frequency: "weekly" | "monthly" | "quarterly" | "yearly";
+  frequency: "daily" | "weekly" | "monthly" | "quarterly" | "yearly";
 }
 
 export interface BillingProcessCycle {
