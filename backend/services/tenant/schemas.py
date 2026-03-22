@@ -91,6 +91,7 @@ class BillingRateUpdate(BaseModel):
 class TransactionType(str, Enum):
     credit = "credit"
     debit = "debit"
+    usage = "usage"
 
 
 class TransactionResponse(BaseModel):
@@ -153,3 +154,37 @@ class MessageCountUpdate(BaseModel):
 class IoTDeviceSyncRequest(BaseModel):
     tenant_id: int
     devices: list
+
+
+class QueryChargeRequest(BaseModel):
+    tenant_id: int
+    qu: float           # Query Units consumed
+    cost: float         # dollar amount = qu × query_rate
+    sql_preview: str    # first ~120 chars of SQL for transaction description
+
+
+class QueryStatsResponse(BaseModel):
+    query_count: int
+    total_qu: float
+    total_cost: float
+
+
+class UsageLineItem(BaseModel):
+    id: int
+    reference: Optional[str] = None
+    description: str
+    amount: float
+    data_points: Optional[int] = None   # QU for query items
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CycleDetailResponse(BaseModel):
+    usage_period: str
+    cycle_amount: float                 # total deducted from balance
+    cycle_date: Optional[datetime] = None
+    message_count: int                  # messages billed this cycle
+    message_cost: float                 # message_count × message_rate
+    query_items: List[UsageLineItem]    # individual query USAGE records
+    query_total_cost: float
+    query_total_qu: float

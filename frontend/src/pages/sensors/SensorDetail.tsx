@@ -7,6 +7,7 @@ import {
   useUpdateSensorStatusMutation,
   useLogConnectionEventMutation,
   useGetBillingQuery,
+  useGetQueryStatsQuery,
 } from "../../redux/apislices/userDashboardApiSlice";
 import { useBillingRates } from "../../hooks/useBillingRates";
 import { STATUS_STYLES, sensorIcon } from "./sensorUtils";
@@ -255,6 +256,16 @@ const SensorDetail = () => {
   });
 
   const { data: billing } = useGetBillingQuery();
+
+  // Query spend scoped to this sensor; falls back to farm-level if no sensor hits
+  const { data: sensorQueryStats } = useGetQueryStatsQuery(
+    { sensor_id: sensorId },
+    { skip: !sensorId },
+  );
+  const { data: farmQueryStats } = useGetQueryStatsQuery(
+    { farm_id: sensor?.farm_id ?? "" },
+    { skip: !sensor?.farm_id || (sensorQueryStats?.query_count ?? 0) > 0 },
+  );
 
   usePageTitle(sensor ? `${sensor.sensor_name} — VerdantIQ` : "Sensor — VerdantIQ");
 
@@ -728,25 +739,82 @@ const SensorDetail = () => {
               onDisconnect={handleDisconnect}
             />
 
-            {/* Card 5 — Analytics placeholder */}
-            <div
-              className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col"
-              style={fixedStyle}
-            >
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3 shrink-0">Analytics</p>
-              <div className="flex-1 flex items-center justify-center">
-                <div className="text-center">
-                  <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-2">
-                    <svg className="w-5 h-5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                        d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                    </svg>
-                  </div>
-                  <p className="text-xs text-gray-400">Charts coming soon</p>
-                  <p className="text-xs text-gray-300 mt-0.5">Trino + Iceberg integration</p>
+            {/* Card 5 — Analytics query spend */}
+            {(() => {
+              // Use sensor-level stats if any queries matched; otherwise fall back to farm-level
+              const stats = (sensorQueryStats?.query_count ?? 0) > 0
+                ? sensorQueryStats!
+                : farmQueryStats;
+              const scopeLabel = (sensorQueryStats?.query_count ?? 0) > 0
+                ? "This sensor"
+                : sensor?.farm_id
+                ? `Farm · ${sensor.location ?? sensor.farm_id}`
+                : "This sensor";
+              const hasData = (stats?.query_count ?? 0) > 0;
+              return (
+                <div
+                  className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col"
+                  style={fixedStyle}
+                >
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3 shrink-0">Analytics Usage</p>
+                  {!hasData ? (
+                    <div className="flex-1 flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-2">
+                          <svg className="w-5 h-5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                              d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                          </svg>
+                        </div>
+                        <p className="text-xs text-gray-400">No queries run yet</p>
+                        <p className="text-xs text-gray-300 mt-0.5">Run queries in the Query Console to see costs here</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex-1 overflow-y-auto space-y-0">
+                      {/* Scope label */}
+                      <div className="mb-3 px-2 py-1.5 bg-blue-50 rounded-lg">
+                        <p className="text-xs text-blue-600 font-medium">{scopeLabel}</p>
+                      </div>
+
+                      <DetailRow
+                        label="Queries Run"
+                        value={<span className="font-semibold text-gray-700">{stats!.query_count.toLocaleString()}</span>}
+                      />
+                      <DetailRow
+                        label="Total QU"
+                        value={<span className="font-semibold text-amber-600">{stats!.total_qu.toFixed(2)} QU</span>}
+                      />
+                      <DetailRow
+                        label="Total Cost"
+                        value={<span className="font-semibold text-red-600">${stats!.total_cost.toFixed(4)}</span>}
+                      />
+                      <DetailRow
+                        label="Avg Cost / Query"
+                        value={
+                          <span className="font-semibold text-gray-700">
+                            ${(stats!.total_cost / stats!.query_count).toFixed(4)}
+                          </span>
+                        }
+                      />
+                      <DetailRow
+                        label="Avg QU / Query"
+                        value={
+                          <span className="font-semibold text-amber-600">
+                            {(stats!.total_qu / stats!.query_count).toFixed(2)} QU
+                          </span>
+                        }
+                      />
+
+                      {/* Rate reminder */}
+                      <div className="pt-2 mt-1 border-t border-gray-50">
+                        <p className="text-xs text-gray-300">Rate: $0.01 / QU · 1 QU minimum per query</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
-            </div>
+              );
+            })()}
 
             {/* Card 6 — Billing (Feature 1: replaces Map placeholder) */}
             <div

@@ -271,6 +271,124 @@ def get_billing_rate(db: Session) -> models.BillingRate:
     return rate
 
 
+def charge_query(
+    db: Session, tenant_id: int, qu: float, cost: float, sql_preview: str
+) -> tuple["models.Billing | None", bool]:
+    """Add a query charge to the tenant's running cost (amount_due) and record a USAGE ledger entry.
+
+    Query charges accumulate in amount_due — they are NOT immediately deducted from balance.
+    The balance is only reduced at the end of the billing cycle via process_billing_cycle.
+    Returns (billing, newly_suspended).
+    """
+    billing = get_billing_by_tenant(db, tenant_id)
+    if not billing:
+        return None, False
+    newly_suspended = False
+    if billing.status == models.BillingStatus.ACTIVE:
+        billing.amount_due = (billing.amount_due or 0.0) + cost
+        newly_suspended = _auto_suspend_if_overdrawn(billing)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    tx = models.Transaction(
+        billing_id=billing.id,
+        type=models.TransactionType.USAGE,
+        amount=cost,
+        balance_after=billing.balance or 0.0,
+        description=f"Query — {qu:.2f} QU · {sql_preview[:120]}",
+        reference=f"QRY-{uuid.uuid4().hex[:8].upper()}",
+        data_points=int(round(qu)),
+        usage_period=now.strftime("%Y-%m"),
+    )
+    db.add(tx)
+    db.commit()
+    db.refresh(billing)
+    return billing, newly_suspended
+
+
+def get_cycle_detail(
+    db: Session, tenant_id: int, usage_period: str
+) -> schemas.CycleDetailResponse:
+    """Return the breakdown for a billing cycle: message summary + individual query items."""
+    billing = get_billing_by_tenant(db, tenant_id)
+    empty = schemas.CycleDetailResponse(
+        usage_period=usage_period,
+        cycle_amount=0.0,
+        cycle_date=None,
+        message_count=0,
+        message_cost=0.0,
+        query_items=[],
+        query_total_cost=0.0,
+        query_total_qu=0.0,
+    )
+    if not billing:
+        return empty
+    cycle_tx = (
+        db.query(models.Transaction)
+        .filter(
+            models.Transaction.billing_id == billing.id,
+            models.Transaction.reference.like("CYCLE-%"),
+            models.Transaction.usage_period == usage_period,
+        )
+        .order_by(models.Transaction.created_at.desc())
+        .first()
+    )
+    usage_items = (
+        db.query(models.Transaction)
+        .filter(
+            models.Transaction.billing_id == billing.id,
+            models.Transaction.type == models.TransactionType.USAGE,
+            models.Transaction.usage_period == usage_period,
+        )
+        .order_by(models.Transaction.created_at.asc())
+        .all()
+    )
+    rate = get_billing_rate(db)
+    message_count = cycle_tx.data_points or 0 if cycle_tx else 0
+    message_cost = round(message_count * rate.message_rate, 6)
+    query_total_cost = sum(tx.amount for tx in usage_items)
+    query_total_qu = sum(float(tx.data_points or 0) for tx in usage_items)
+    return schemas.CycleDetailResponse(
+        usage_period=usage_period,
+        cycle_amount=cycle_tx.amount if cycle_tx else 0.0,
+        cycle_date=cycle_tx.created_at if cycle_tx else None,
+        message_count=message_count,
+        message_cost=message_cost,
+        query_items=[schemas.UsageLineItem.model_validate(tx) for tx in usage_items],
+        query_total_cost=round(query_total_cost, 6),
+        query_total_qu=query_total_qu,
+    )
+
+
+def get_query_stats(
+    db: Session, tenant_id: int, sensor_id: str | None, farm_id: str | None
+) -> schemas.QueryStatsResponse:
+    """Return aggregated query spend for a specific sensor and/or farm.
+
+    Matches by searching the transaction description for sensor_id / farm_id
+    strings — query charges embed the SQL preview in the description which
+    typically contains the identifiers the user queried by.
+    """
+    billing = get_billing_by_tenant(db, tenant_id)
+    if not billing:
+        return schemas.QueryStatsResponse(query_count=0, total_qu=0.0, total_cost=0.0)
+    q = (
+        db.query(models.Transaction)
+        .filter(
+            models.Transaction.billing_id == billing.id,
+            models.Transaction.reference.like("QRY-%"),
+        )
+    )
+    if sensor_id:
+        q = q.filter(models.Transaction.description.ilike(f"%{sensor_id}%"))
+    elif farm_id:
+        q = q.filter(models.Transaction.description.ilike(f"%{farm_id}%"))
+    txns = q.all()
+    return schemas.QueryStatsResponse(
+        query_count=len(txns),
+        total_qu=sum(float(t.data_points or 0) for t in txns),
+        total_cost=sum(t.amount for t in txns),
+    )
+
+
 def update_billing_rate(db: Session, updates: schemas.BillingRateUpdate) -> models.BillingRate:
     rate = get_billing_rate(db)
     if updates.message_rate is not None:

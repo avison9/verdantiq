@@ -289,6 +289,8 @@ class QueryResult(BaseModel):
     columns: List[str]
     rows: List[List[Any]]
     ms: int
+    qu: float = 0.0     # Query Units consumed
+    cost: float = 0.0   # dollar cost = qu × $0.01/QU
 
 
 class SchemaColumn(BaseModel):
@@ -316,9 +318,13 @@ class SchemaTree(BaseModel):
 
 
 class QueryHistoryItem(BaseModel):
-    ts: str        # ISO-8601 timestamp
-    sql: str       # full SQL text
-    ms: int        # execution time in ms
+    ts: str                     # ISO-8601 timestamp
+    sql: str                    # full SQL text
+    ms: int                     # execution time in ms
+    qu: float = 0.0             # Query Units consumed
+    cost: float = 0.0           # dollar cost
+    columns: List[str] = []     # result column headers
+    rows: List[List[Any]] = []  # result rows (for display on history click)
 
 
 class QueryHistory(BaseModel):

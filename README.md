@@ -12,6 +12,7 @@
 - Multi-tenant SaaS — each farm organisation is fully isolated
 - Star-schema data warehouse (Apache Iceberg)
 - Dashboards via Grafana / Apache Superset
+- Usage-based billing with per-Query-Unit (QU) pricing for analytics queries
 
 ---
 
@@ -32,7 +33,7 @@ All services   ──(shared JWT)──► PostgreSQL (single shared DB, isolate
 Data Services runs independently and connects to the same network:
 
 ```
-IoT Devices → MQTT → Kafka → Spark Streaming → Iceberg (MinIO) → Trino → Frontend
+IoT Devices → MQTT → Kafka → Spark Streaming → Iceberg (MinIO) → Analytics Engine → Frontend
 ```
 
 ---
@@ -48,7 +49,7 @@ IoT Devices → MQTT → Kafka → Spark Streaming → Iceberg (MinIO) → Trino
 | **Ingestion** | Kafka 7.4, Zookeeper, Schema Registry, Avro |
 | **Streaming ETL** | Apache Spark 3.5 Structured Streaming |
 | **Storage** | MinIO (S3-compatible), Apache Iceberg |
-| **Query** | Trino |
+| **Analytics Query Engine** | Distributed SQL analytics |
 | **Frontend** | React 19, TypeScript, Vite, TailwindCSS, Redux Toolkit |
 | **Monitoring** | Prometheus, Grafana |
 | **Package management** | uv (Python), npm (frontend) |
@@ -305,6 +306,7 @@ Copy `.env.example` to `.env` at the project root. Key variables:
 | `SECRET_KEY` | JWT signing secret (shared by all services) | — |
 | `ALGORITHM` | JWT algorithm | `HS256` |
 | `TENANT_SERVICE_URL` | Sensor → Tenant inter-service URL | `http://tenant:8002` |
+| `REDIS_URL` | Redis connection string (query cache) | `redis://redis:6379` |
 | `MINIO_ROOT_USER` | MinIO admin username | `admin` |
 | `MINIO_ROOT_PASSWORD` | MinIO admin password | — |
 | `GRAFANA_ADMIN_USER` | Grafana admin username | `admin` |
@@ -314,6 +316,44 @@ Generate a secure `SECRET_KEY`:
 ```bash
 python -c "import secrets; print(secrets.token_hex(32))"
 ```
+
+---
+
+## Billing Model
+
+VerdantIQ uses **usage-based billing** across three resource dimensions:
+
+### Sensor & Message Charges
+| Resource | Rate |
+|---|---|
+| Sensor onboarding | $1.00 per sensor |
+| Message ingestion | $0.0005 per message ($0.50 per 1,000) |
+| Storage | $0.50 per GB/month |
+
+### Query Billing — Composite Query Units (QU)
+
+Analytics queries are billed by **Query Units (QU)**, a composite metric that reflects actual compute cost across three axes:
+
+```
+QU = max(1, bytes_scanned_GB × 1.0
+           + cpu_seconds     × 2.0
+           + peak_mem_GB_s   × 0.5)
+
+Cost = QU × $0.01
+```
+
+| Component | Weight | What it captures |
+|---|---|---|
+| Data scanned (GB) | 1.0 QU/GB | Iceberg/MinIO read I/O |
+| CPU time (seconds) | 2.0 QU/CPU-s | JOINs, aggregations, window functions |
+| Peak memory × wall time (GB·s) | 0.5 QU/GB-s | Large sorts, hash joins |
+| Floor | 1 QU minimum | Planning & scheduling overhead |
+
+**Rate: $0.01 per QU**
+
+Every query charge is immediately deducted from the tenant's prepaid balance and logged as a DEBIT transaction in the billing ledger. If the balance reaches zero, the tenant is suspended until they top up.
+
+Queries that use Iceberg partition pruning (e.g. filtering on `farm_id` or `sensor_id`) produce dramatically lower `bytes_scanned`, reducing cost. This incentivises well-structured queries.
 
 ---
 

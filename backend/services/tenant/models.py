@@ -49,6 +49,7 @@ class PaymentMethod(str, enum.Enum):
 class TransactionType(str, enum.Enum):
     CREDIT = "credit"
     DEBIT = "debit"
+    USAGE = "usage"
 
 
 # ─── Read-only references (owned by Auth service) ────────────────────────────
@@ -149,6 +150,6 @@ class BillingRate(Base):
     id           = Column(Integer, primary_key=True, index=True)
     message_rate = Column(Float, nullable=False, default=0.0005)   # per message
     storage_rate = Column(Float, nullable=False, default=0.50)     # per GB/month
-    query_rate   = Column(Float, nullable=False, default=0.001)    # per query execution
+    query_rate   = Column(Float, nullable=False, default=0.01)     # per Query Unit (QU)
     created_at   = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at   = Column(DateTime, onupdate=func.now())

@@ -12,6 +12,7 @@ import {
   useUpdateSensorStatusMutation,
   useUpdateSensorMutation,
   useLogConnectionEventMutation,
+  useGetQueryStatsQuery,
 } from "../../redux/apislices/userDashboardApiSlice";
 import { useBillingRates } from "../../hooks/useBillingRates";
 
@@ -415,6 +416,9 @@ const SetupBilling = () => {
     return () => clearInterval(id);
   }, []);
 
+  // Tenant-wide query spend — charged immediately to balance, not via billing cycle
+  const { data: tenantQueryStats } = useGetQueryStatsQuery({});
+
   const sensors    = sensorsPage?.items ?? [];
   const balance    = billing?.balance ?? 0;
 
@@ -436,7 +440,7 @@ const SetupBilling = () => {
     const storageKB = storageBytes / 1024;
     return sum + storageKB * (storage_rate / (1024 * 1024));
   }, 0);
-  const totalQueryCost = 0; // Trino integration pending
+  const totalQueryCost = tenantQueryStats?.total_cost ?? 0;
   // Total running cost across all sensors (for display)
   const totalCost = totalMsgCost + totalStorageCost + totalQueryCost;
 

@@ -380,10 +380,37 @@ def suspend_tenant_sensors(db: Session, tenant_id: int) -> list[str]:
     return [s.sensor_id for s in active_sensors]
 
 
-def run_query(sql: str, tenant_id: int) -> tuple[list[str], list[list[str | None]]]:
+# ── Query billing constants ───────────────────────────────────────────────────
+QUERY_RATE_PER_QU  = 0.01   # $0.01 per Query Unit
+QU_MIN             = 1.0    # floor: every query costs at least 1 QU
+QU_BYTES_WEIGHT    = 1.0    # 1 QU per GB scanned from Iceberg/MinIO
+QU_CPU_WEIGHT      = 2.0    # 2 QU per CPU-second (aggregations, JOINs, UDFs)
+QU_MEM_WEIGHT      = 0.5    # 0.5 QU per GB·second of peak memory held
+
+
+def calculate_qu(trino_stats: dict) -> float:
+    """Compute Query Units from raw Trino query statistics.
+
+    QU = max(QU_MIN, bytes_gb × QU_BYTES_WEIGHT
+                    + cpu_s  × QU_CPU_WEIGHT
+                    + mem_gb_s × QU_MEM_WEIGHT)
+    """
+    bytes_gb   = trino_stats.get("processedBytes", 0) / (1024 ** 3)
+    cpu_s      = trino_stats.get("cpuTimeMillis", 0) / 1_000
+    peak_mem_gb = trino_stats.get("peakMemoryBytes", 0) / (1024 ** 3)
+    wall_s     = trino_stats.get("wallTimeMillis", 0) / 1_000
+    mem_gb_s   = peak_mem_gb * wall_s
+    raw = (QU_BYTES_WEIGHT * bytes_gb
+           + QU_CPU_WEIGHT * cpu_s
+           + QU_MEM_WEIGHT * mem_gb_s)
+    return round(max(QU_MIN, raw), 4)
+
+
+def run_query(sql: str, tenant_id: int) -> tuple[list[str], list[list[str | None]], dict]:
     """Execute user SQL on Trino. Replaces current_user_tenant() with the real tenant_id.
 
-    Returns (columns, rows) where every cell is a string or None.
+    Returns (columns, rows, trino_stats) where every cell is a string or None.
+    trino_stats contains raw Trino query statistics (processedBytes, cpuTimeMillis, etc.).
     Raises ValueError for bad SQL (user error), trino.exceptions.DatabaseError for connectivity.
     """
     # Trino DBAPI rejects a trailing semicolon — strip it before executing
@@ -402,12 +429,14 @@ def run_query(sql: str, tenant_id: int) -> tuple[list[str], list[list[str | None
         cur.execute(safe_sql)
         rows = cur.fetchmany(1000)
         columns = [desc[0] for desc in (cur.description or [])]
+        # Capture stats before close; default to {} if unavailable (schema-only queries)
+        trino_stats: dict = dict(cur.stats) if getattr(cur, "stats", None) else {}
         str_rows: list[list[str | None]] = [
             [str(cell) if cell is not None else None for cell in row]
             for row in rows
         ]
         cur.close()
-        return columns, str_rows
+        return columns, str_rows, trino_stats
     except trino.exceptions.TrinoUserError as exc:
         raise ValueError(str(exc)) from exc
     except Exception as exc:

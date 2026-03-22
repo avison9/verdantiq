@@ -284,9 +284,9 @@ const StorageQuery = () => {
     }
   }, [lastSqlData, sqlInitialized]);
 
-  // Seed history from Redis on mount
+  // Sync history from Redis whenever server data arrives/refreshes
   useEffect(() => {
-    if (historyData?.items.length) {
+    if (historyData) {
       setHistory(historyData.items);
     }
   }, [historyData]);
@@ -321,9 +321,11 @@ const StorageQuery = () => {
       const result = await runQuery({ sql }).unwrap();
       setResults(result);
       setHistory(prev => [{
-        ts:  new Date().toISOString(),
-        sql: sql.trim(),
-        ms:  result.ms,
+        ts:   new Date().toISOString(),
+        sql:  sql.trim(),
+        ms:   result.ms,
+        qu:   result.qu,
+        cost: result.cost,
       }, ...prev.slice(0, 19)]);
     } catch (err: unknown) {
       const apiErr = err as { data?: { detail?: string }; status?: number };
@@ -494,6 +496,13 @@ const StorageQuery = () => {
                     {results.rows.length} rows
                   </span>
                   <span>{results.ms} ms</span>
+                  <span className="text-gray-300">·</span>
+                  <span className="font-mono text-amber-600" title="Query Units consumed">
+                    {results.qu.toFixed(2)} QU
+                  </span>
+                  <span className="font-mono text-red-500" title="Query cost deducted from balance">
+                    −${results.cost.toFixed(4)}
+                  </span>
                 </div>
               )}
             </div>
@@ -579,7 +588,15 @@ const StorageQuery = () => {
                       No query history yet
                     </div>
                   ) : history.map((h, i) => (
-                    <button key={i} onClick={() => { setSql(h.sql); setActiveTab("results"); }}
+                    <button key={i} onClick={() => {
+                      setSql(h.sql);
+                      setQueryError(null);
+                      setResults(h.columns?.length
+                        ? { columns: h.columns, rows: h.rows ?? [], ms: h.ms, qu: h.qu, cost: h.cost }
+                        : null
+                      );
+                      setActiveTab("results");
+                    }}
                       className="w-full flex items-center gap-4 px-5 py-3 hover:bg-gray-50 transition-colors text-left">
                       <span className="text-xs text-gray-400 font-mono shrink-0 w-16">
                         {new Date(h.ts).toLocaleTimeString()}
@@ -588,6 +605,8 @@ const StorageQuery = () => {
                         {h.sql.slice(0, 100)}{h.sql.length > 100 ? "…" : ""}
                       </span>
                       <span className="text-xs text-emerald-600 shrink-0">{h.ms} ms</span>
+                      <span className="text-xs text-amber-600 font-mono shrink-0">{(h.qu ?? 0).toFixed(2)} QU</span>
+                      <span className="text-xs text-red-500 font-mono shrink-0">−${(h.cost ?? 0).toFixed(4)}</span>
                     </button>
                   ))}
                 </div>
