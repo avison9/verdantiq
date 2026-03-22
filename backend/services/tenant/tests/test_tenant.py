@@ -677,7 +677,7 @@ def _make_billing(db_session, tenant_id, balance, amount_due, frequency="monthly
 def test_amount_due_preserved_when_suspended_by_messages(db_session, mock_user):
     """When messages push amount_due above balance the billing is suspended and
     amount_due is NOT zeroed — it is frozen so the debt survives to cycle end."""
-    import crud
+    import crud, models
 
     # Balance = $0.10, one message costs $0.000001 — but many will exceed it
     billing = _make_billing(db_session, mock_user.tenant_id, balance=0.10, amount_due=0.0)
@@ -697,7 +697,7 @@ def test_amount_due_preserved_when_suspended_by_messages(db_session, mock_user):
 def test_amount_due_preserved_when_suspended_by_sensors(db_session, mock_user):
     """Adding sensors beyond what balance can cover suspends billing and
     freezes amount_due for later deduction."""
-    import crud
+    import crud, models
 
     # Balance = $0.50, each sensor costs $1.00 → 1 sensor already exceeds balance
     billing = _make_billing(db_session, mock_user.tenant_id, balance=0.50, amount_due=0.0)
@@ -759,7 +759,7 @@ def test_process_billing_cycle_deducts_frozen_amount_due(db_session, mock_user):
 
 def test_process_billing_cycle_stays_suspended_when_balance_zero(db_session, mock_user):
     """After a cycle where balance is fully consumed, billing remains SUSPENDED."""
-    import crud, schemas
+    import crud, schemas, models
 
     billing = _make_billing(
         db_session, mock_user.tenant_id,
@@ -776,7 +776,7 @@ def test_process_billing_cycle_stays_suspended_when_balance_zero(db_session, moc
 
 def test_process_billing_cycle_reactivates_when_balance_remains(db_session, mock_user):
     """After a cycle where balance > amount_due, billing becomes ACTIVE again."""
-    import crud, schemas
+    import crud, schemas, models
 
     billing = _make_billing(
         db_session, mock_user.tenant_id,
@@ -794,7 +794,7 @@ def test_process_billing_cycle_reactivates_when_balance_remains(db_session, mock
 
 def test_process_billing_cycle_creates_debit_transaction(db_session, mock_user):
     """process_billing_cycle must write a DEBIT Transaction row with correct amount."""
-    import crud, schemas
+    import crud, schemas, models
 
     billing = _make_billing(
         db_session, mock_user.tenant_id,
