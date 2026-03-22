@@ -645,3 +645,256 @@ def test_get_billing_after_topup_shows_updated_balance(client):
     resp = client.get("/billings/")
     assert resp.status_code == 200
     assert resp.json()["balance"] == 50.0
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Suspension: amount_due preserved when running cost exceeds balance
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _make_billing(db_session, tenant_id, balance, amount_due, frequency="monthly", status="active"):
+    """Insert a Billing row directly for unit-test setup."""
+    from datetime import timedelta, timezone
+    billing = models.Billing(
+        tenant_id=tenant_id,
+        status=models.BillingStatus.ACTIVE if status == "active" else models.BillingStatus.SUSPENDED,
+        frequency=models.BillingFrequency.MONTHLY if frequency == "monthly"
+                  else models.BillingFrequency.DAILY if frequency == "daily"
+                  else models.BillingFrequency.WEEKLY,
+        payment_method="credit_card",
+        balance=balance,
+        amount_due=amount_due,
+        message_count=0,
+        sensor_count=0,
+        due_date=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=30),
+    )
+    db_session.add(billing)
+    db_session.commit()
+    db_session.refresh(billing)
+    return billing
+
+
+def test_amount_due_preserved_when_suspended_by_messages(db_session, mock_user):
+    """When messages push amount_due above balance the billing is suspended and
+    amount_due is NOT zeroed — it is frozen so the debt survives to cycle end."""
+    import crud
+
+    # Balance = $0.10, one message costs $0.000001 — but many will exceed it
+    billing = _make_billing(db_session, mock_user.tenant_id, balance=0.10, amount_due=0.0)
+
+    # Incrementing 200 000 messages → amount_due ~ $0.20 > $0.10 balance
+    updated, newly_suspended = crud.update_message_count(
+        db_session, mock_user.tenant_id, increment=200_000
+    )
+
+    assert newly_suspended is True
+    assert updated.status == models.BillingStatus.SUSPENDED
+    # amount_due must be positive and frozen — not reset to 0
+    assert updated.amount_due > 0
+    assert updated.amount_due > updated.balance
+
+
+def test_amount_due_preserved_when_suspended_by_sensors(db_session, mock_user):
+    """Adding sensors beyond what balance can cover suspends billing and
+    freezes amount_due for later deduction."""
+    import crud
+
+    # Balance = $0.50, each sensor costs $1.00 → 1 sensor already exceeds balance
+    billing = _make_billing(db_session, mock_user.tenant_id, balance=0.50, amount_due=0.0)
+
+    updated, newly_suspended = crud.update_sensor_count(
+        db_session, mock_user.tenant_id, delta=1
+    )
+
+    assert newly_suspended is True
+    assert updated.status == models.BillingStatus.SUSPENDED
+    assert updated.amount_due > 0
+    assert updated.amount_due > updated.balance
+
+
+def test_amount_due_not_recalculated_while_suspended(db_session, mock_user):
+    """After suspension, further message increments must NOT recalculate or clear amount_due
+    — the frozen debt value must remain unchanged."""
+    import crud
+
+    # Start already suspended with a known frozen debt
+    frozen_debt = 5.00
+    billing = _make_billing(
+        db_session, mock_user.tenant_id,
+        balance=0.0, amount_due=frozen_debt, status="suspended"
+    )
+
+    # More messages arrive during the suspended window
+    updated, newly_suspended = crud.update_message_count(
+        db_session, mock_user.tenant_id, increment=50_000
+    )
+
+    # Not newly suspended (was already suspended)
+    assert newly_suspended is False
+    # amount_due must still equal the frozen value — messages didn't change it
+    assert updated.amount_due == frozen_debt
+    # message_count still incremented (for record-keeping)
+    assert updated.message_count == 50_000
+
+
+def test_process_billing_cycle_deducts_frozen_amount_due(db_session, mock_user):
+    """process_billing_cycle must deduct the frozen amount_due from balance
+    even when billing is in SUSPENDED state (end-of-cycle settlement)."""
+    import crud, schemas
+
+    # Billing is suspended: amount_due=$5, balance=$3 → deduct $3 (max available)
+    billing = _make_billing(
+        db_session, mock_user.tenant_id,
+        balance=3.00, amount_due=5.00, status="suspended"
+    )
+
+    result = crud.process_billing_cycle(
+        db_session, mock_user.tenant_id, schemas.BillingProcessCycleRequest()
+    )
+
+    assert result.balance == 0.0          # $3 fully consumed
+    assert result.amount_due == 0.0       # reset after cycle
+    assert result.message_count == 0      # reset after cycle
+
+
+def test_process_billing_cycle_stays_suspended_when_balance_zero(db_session, mock_user):
+    """After a cycle where balance is fully consumed, billing remains SUSPENDED."""
+    import crud, schemas
+
+    billing = _make_billing(
+        db_session, mock_user.tenant_id,
+        balance=2.00, amount_due=5.00, status="suspended"
+    )
+
+    result = crud.process_billing_cycle(
+        db_session, mock_user.tenant_id, schemas.BillingProcessCycleRequest()
+    )
+
+    assert result.status == models.BillingStatus.SUSPENDED
+    assert result.balance == 0.0
+
+
+def test_process_billing_cycle_reactivates_when_balance_remains(db_session, mock_user):
+    """After a cycle where balance > amount_due, billing becomes ACTIVE again."""
+    import crud, schemas
+
+    billing = _make_billing(
+        db_session, mock_user.tenant_id,
+        balance=20.00, amount_due=5.00, status="suspended"
+    )
+
+    result = crud.process_billing_cycle(
+        db_session, mock_user.tenant_id, schemas.BillingProcessCycleRequest()
+    )
+
+    assert result.status == models.BillingStatus.ACTIVE
+    assert result.balance == pytest.approx(15.00)
+    assert result.amount_due == 0.0
+
+
+def test_process_billing_cycle_creates_debit_transaction(db_session, mock_user):
+    """process_billing_cycle must write a DEBIT Transaction row with correct amount."""
+    import crud, schemas
+
+    billing = _make_billing(
+        db_session, mock_user.tenant_id,
+        balance=10.00, amount_due=4.00
+    )
+    billing.message_count = 1000
+    db_session.commit()
+
+    crud.process_billing_cycle(
+        db_session, mock_user.tenant_id, schemas.BillingProcessCycleRequest()
+    )
+
+    txs = db_session.query(models.Transaction).filter_by(billing_id=billing.id).all()
+    assert len(txs) == 1
+    tx = txs[0]
+    assert tx.type == models.TransactionType.DEBIT
+    assert tx.amount == pytest.approx(4.00)
+    assert tx.balance_after == pytest.approx(6.00)
+    assert tx.data_points == 1000
+    assert tx.reference.startswith("CYCLE-")
+
+
+def test_process_billing_cycle_advances_due_date(db_session, mock_user):
+    """After cycle processing, due_date must advance by one billing period."""
+    import crud, schemas
+
+    billing = _make_billing(
+        db_session, mock_user.tenant_id,
+        balance=50.00, amount_due=2.00
+    )
+    old_due = billing.due_date
+
+    crud.process_billing_cycle(
+        db_session, mock_user.tenant_id, schemas.BillingProcessCycleRequest()
+    )
+
+    db_session.refresh(billing)
+    assert billing.due_date > old_due
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Daily billing cycle
+# ══════════════════════════════════════════════════════════════════════════════
+
+def test_calculate_next_due_date_daily():
+    """DAILY frequency advances due_date by exactly one day."""
+    import crud, models
+    base = datetime(2026, 3, 22, 12, 0, 0)
+    result = crud.calculate_next_due_date(models.BillingFrequency.DAILY, base)
+    assert result.day == 23
+    assert result.month == 3
+    assert result.year == 2026
+
+
+def test_calculate_next_due_date_daily_month_boundary():
+    """DAILY frequency correctly rolls over to the next month."""
+    import crud, models
+    base = datetime(2026, 1, 31)
+    result = crud.calculate_next_due_date(models.BillingFrequency.DAILY, base)
+    assert result.month == 2
+    assert result.day == 1
+
+
+def test_update_billing_frequency_to_daily(client, billing_data):
+    """PATCH /billing/frequency accepts 'daily' and updates the record."""
+    client.post("/billings/", json=billing_data)
+
+    resp = client.patch("/billings/frequency", json={"frequency": "daily"})
+    assert resp.status_code == 200
+    assert resp.json()["frequency"] == "daily"
+
+
+def test_process_billing_cycle_daily_advances_one_day(db_session, mock_user):
+    """Cycle processing on a DAILY billing advances due_date by exactly one day."""
+    import crud, schemas
+    from datetime import timedelta, timezone
+
+    billing = _make_billing(
+        db_session, mock_user.tenant_id,
+        balance=50.00, amount_due=1.00, frequency="daily"
+    )
+
+    before = datetime.now(timezone.utc).replace(tzinfo=None)
+    crud.process_billing_cycle(
+        db_session, mock_user.tenant_id, schemas.BillingProcessCycleRequest()
+    )
+    db_session.refresh(billing)
+
+    # due_date must be approximately tomorrow (within a 5-second window of test execution)
+    expected = before + timedelta(days=1)
+    delta = abs((billing.due_date - expected).total_seconds())
+    assert delta < 5
+
+
+def test_process_billing_cycle_endpoint_accepts_daily(client, billing_data):
+    """POST /billings/process-cycle works end-to-end for a DAILY billing."""
+    # Setup billing with daily frequency via direct API
+    client.post("/billings/", json={**billing_data, "frequency": "daily"})
+    client.post("/billings/topup/", json=TOPUP_CARD)  # add balance
+
+    resp = client.post("/billings/process-cycle", json={})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["frequency"] == "daily"
