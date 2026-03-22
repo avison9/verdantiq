@@ -653,6 +653,7 @@ def test_get_billing_after_topup_shows_updated_balance(client):
 
 def _make_billing(db_session, tenant_id, balance, amount_due, frequency="monthly", status="active"):
     """Insert a Billing row directly for unit-test setup."""
+    import models
     from datetime import timedelta, timezone
     billing = models.Billing(
         tenant_id=tenant_id,
