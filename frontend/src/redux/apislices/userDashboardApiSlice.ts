@@ -295,7 +295,7 @@ export interface SchemaEntry  { name: string; tables: SchemaTable[]; }
 export interface CatalogEntry { name: string; schemas: SchemaEntry[]; }
 export interface SchemaTree   { catalogs: CatalogEntry[]; }
 
-export interface QueryHistoryItem { ts: string; sql: string; ms: number; qu: number; cost: number; }
+export interface QueryHistoryItem { ts: string; sql: string; ms: number; qu: number; cost: number; columns: string[]; rows: (string | null)[][]; }
 export interface QueryHistory     { items: QueryHistoryItem[]; }
 export interface LastSqlResponse  { sql: string | null; }
 
@@ -577,6 +577,12 @@ export const userDashboardApiSlice = baseApiSlice.injectEndpoints({
         `${APIendPoints.billings}/cycle-detail?usage_period=${encodeURIComponent(usage_period)}`,
       keepUnusedDataFor: 0,
     }),
+    clearQueryHistory: builder.mutation<void, void>({
+      query: () => ({
+        url: `${APIendPoints.query}/history`,
+        method: "DELETE",
+      }),
+    }),
   }),
 });
 
@@ -619,4 +625,5 @@ export const {
   useGetLastSqlQuery,
   useGetQueryStatsQuery,
   useGetCycleDetailQuery,
+  useClearQueryHistoryMutation,
 } = userDashboardApiSlice;

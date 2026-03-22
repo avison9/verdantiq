@@ -588,7 +588,15 @@ const StorageQuery = () => {
                       No query history yet
                     </div>
                   ) : history.map((h, i) => (
-                    <button key={i} onClick={() => { setSql(h.sql); setActiveTab("results"); }}
+                    <button key={i} onClick={() => {
+                      setSql(h.sql);
+                      setQueryError(null);
+                      setResults(h.columns?.length
+                        ? { columns: h.columns, rows: h.rows ?? [], ms: h.ms, qu: h.qu, cost: h.cost }
+                        : null
+                      );
+                      setActiveTab("results");
+                    }}
                       className="w-full flex items-center gap-4 px-5 py-3 hover:bg-gray-50 transition-colors text-left">
                       <span className="text-xs text-gray-400 font-mono shrink-0 w-16">
                         {new Date(h.ts).toLocaleTimeString()}

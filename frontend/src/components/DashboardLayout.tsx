@@ -4,6 +4,7 @@ import { useDispatch } from "react-redux";
 import { toast } from "react-toastify";
 import { useGetMeQuery, useLogoutMutation } from "../redux/apislices/authApiSlice";
 import { logout as logoutAction } from "../redux/slices/authSlice";
+import { useClearQueryHistoryMutation } from "../redux/apislices/userDashboardApiSlice";
 
 type MenuSection = "sensors" | "billing" | "analytics" | "storage" | "team" | "farm";
 
@@ -21,9 +22,12 @@ const DashboardLayout = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const [logoutApi] = useLogoutMutation();
+  const [clearQueryHistory] = useClearQueryHistoryMutation();
   const { data: me } = useGetMeQuery();
 
   const handleLogout = async () => {
+    // Clear Redis query history before invalidating the session cookie
+    try { await clearQueryHistory().unwrap(); } catch { /* best-effort */ }
     try {
       await logoutApi().unwrap();
     } catch {
