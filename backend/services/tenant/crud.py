@@ -20,7 +20,9 @@ def calculate_amount_due(message_count: int, sensor_count: int, ml_features: lis
 
 
 def calculate_next_due_date(frequency: models.BillingFrequency, last_date: datetime) -> datetime:
-    if frequency == models.BillingFrequency.WEEKLY:
+    if frequency == models.BillingFrequency.DAILY:
+        return last_date + relativedelta(days=1)
+    elif frequency == models.BillingFrequency.WEEKLY:
         return last_date + relativedelta(weeks=1)
     elif frequency == models.BillingFrequency.MONTHLY:
         return last_date + relativedelta(months=1)

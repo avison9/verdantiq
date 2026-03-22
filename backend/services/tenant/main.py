@@ -52,6 +52,21 @@ async def lifespan(app: FastAPI):
                 END IF;
             END $$;
         """))
+        # Add 'daily' to the billingfrequency enum if not already present
+        conn.execute(text("""
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'billingfrequency') THEN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_enum
+                        WHERE enumlabel = 'daily'
+                          AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'billingfrequency')
+                    ) THEN
+                        ALTER TYPE billingfrequency ADD VALUE 'daily';
+                    END IF;
+                END IF;
+            END $$;
+        """))
         conn.commit()
     yield
 

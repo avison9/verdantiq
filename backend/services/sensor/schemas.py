@@ -10,6 +10,7 @@ class SensorCreate(BaseModel):
     sensor_name: str
     sensor_type: str
     location: Optional[str] = None
+    farm_id: Optional[str] = None
     sensor_metadata: Optional[dict] = None
     # Hardware / identity fields (stored in sensor_metadata)
     manufacturer: Optional[str] = None
@@ -312,3 +313,17 @@ class CatalogEntry(BaseModel):
 
 class SchemaTree(BaseModel):
     catalogs: List[CatalogEntry]
+
+
+class QueryHistoryItem(BaseModel):
+    ts: str        # ISO-8601 timestamp
+    sql: str       # full SQL text
+    ms: int        # execution time in ms
+
+
+class QueryHistory(BaseModel):
+    items: List[QueryHistoryItem]
+
+
+class LastSqlResponse(BaseModel):
+    sql: Optional[str] = None

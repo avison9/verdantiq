@@ -5,6 +5,7 @@ from enum import Enum
 
 
 class BillingFrequency(str, Enum):
+    daily = "daily"
     weekly = "weekly"
     monthly = "monthly"
     quarterly = "quarterly"

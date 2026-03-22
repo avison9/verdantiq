@@ -97,6 +97,7 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-mypassword}@postgres:5432/${POSTGRES_DB:-verdantiq}
       TENANT_SERVICE_URL: http://tenant:8002
+      REDIS_URL: redis://redis:6379
     ports:
       - "8003:8003"
     networks:
@@ -105,6 +106,8 @@ services:
       postgres:
         condition: service_healthy
       tenant:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
   # ── API Gateway ─────────────────────────────────────────────────────────────
@@ -145,6 +148,25 @@ services:
       timeout: 5s
       retries: 3
 
+  # ── Redis (session cache — query history, last SQL) ─────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: verdantiq-redis
+    profiles: [backend]
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - verdantiq-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # ── Test Infrastructure ─────────────────────────────────────────────────────
   test-infra:
     build:
@@ -163,3 +185,5 @@ services:
 volumes:
   pg_data:
     name: verdantiq_pg_data
+  redis_data:
+    name: verdantiq_redis_data

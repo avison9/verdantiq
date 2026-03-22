@@ -823,3 +823,218 @@ def test_audit_log_preserves_sensor_name_after_deletion(client, sensor_payload, 
     items = resp.json()["items"]
     names = {item["sensor_name"] for item in items}
     assert original_name in names
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Billing suspension → data-service disconnect
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _make_active_sensor(db_session, tenant_id, user_id, name="Sensor"):
+    """Insert an active sensor directly into the DB."""
+    sensor = models.Sensor(
+        tenant_id=tenant_id,
+        user_id=user_id,
+        sensor_name=name,
+        sensor_type="soil",
+        mqtt_token=str(uuid.uuid4()),
+        message_count=0,
+        status=models.SensorStatus.active,
+    )
+    db_session.add(sensor)
+    db_session.commit()
+    db_session.refresh(sensor)
+    return sensor
+
+
+def test_suspend_tenant_marks_active_sensors_inactive(client, mock_user, db_session):
+    """All active sensors for a tenant become inactive when billing is suspended."""
+    s1 = _make_active_sensor(db_session, mock_user.tenant_id, mock_user.user_id, "S1")
+    s2 = _make_active_sensor(db_session, mock_user.tenant_id, mock_user.user_id, "S2")
+    s3 = _make_active_sensor(db_session, mock_user.tenant_id, mock_user.user_id, "S3")
+
+    with patch("httpx.AsyncClient") as mock_cls:
+        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_cls.return_value)
+        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_cls.return_value.delete = AsyncMock(return_value=MagicMock(status_code=200))
+
+        resp = client.post(
+            "/internal/sensors/suspend-tenant",
+            json={"tenant_id": mock_user.tenant_id},
+        )
+
+    assert resp.status_code == 200
+    assert resp.json()["suspended"] == 3
+
+    db_session.expire_all()
+    for sensor in [s1, s2, s3]:
+        db_session.refresh(sensor)
+        assert sensor.status == models.SensorStatus.inactive
+        assert sensor.sensor_metadata.get("billing_suspended") is True
+
+
+def test_suspend_tenant_ignores_already_inactive_sensors(client, mock_user, db_session):
+    """Pre-existing inactive sensors are not counted or modified again."""
+    _make_active_sensor(db_session, mock_user.tenant_id, mock_user.user_id, "Active")
+
+    already_inactive = models.Sensor(
+        tenant_id=mock_user.tenant_id,
+        user_id=mock_user.user_id,
+        sensor_name="AlreadyOff",
+        sensor_type="soil",
+        mqtt_token=str(uuid.uuid4()),
+        message_count=0,
+        status=models.SensorStatus.inactive,
+    )
+    db_session.add(already_inactive)
+    db_session.commit()
+
+    with patch("httpx.AsyncClient") as mock_cls:
+        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_cls.return_value)
+        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_cls.return_value.delete = AsyncMock(return_value=MagicMock(status_code=200))
+
+        resp = client.post(
+            "/internal/sensors/suspend-tenant",
+            json={"tenant_id": mock_user.tenant_id},
+        )
+
+    assert resp.status_code == 200
+    # Only the 1 active sensor is suspended — the pre-inactive one is not counted
+    assert resp.json()["suspended"] == 1
+
+
+def test_suspend_tenant_creates_audit_and_connection_events(client, mock_user, db_session):
+    """Each suspended sensor gets a status_changed audit entry and a sensor_suspended event."""
+    s1 = _make_active_sensor(db_session, mock_user.tenant_id, mock_user.user_id, "S1")
+    s2 = _make_active_sensor(db_session, mock_user.tenant_id, mock_user.user_id, "S2")
+
+    with patch("httpx.AsyncClient") as mock_cls:
+        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_cls.return_value)
+        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_cls.return_value.delete = AsyncMock(return_value=MagicMock(status_code=200))
+
+        client.post(
+            "/internal/sensors/suspend-tenant",
+            json={"tenant_id": mock_user.tenant_id},
+        )
+
+    for sensor in [s1, s2]:
+        # Audit log: status_changed with reason billing_suspended
+        audit_rows = db_session.query(models.SensorAuditLog).filter(
+            models.SensorAuditLog.sensor_id == sensor.sensor_id,
+            models.SensorAuditLog.action == "status_changed",
+        ).all()
+        assert len(audit_rows) == 1
+        assert audit_rows[0].details.get("reason") == "billing_suspended"
+        assert audit_rows[0].details.get("new_status") == "inactive"
+
+        # Connection event: sensor_suspended
+        events = db_session.query(models.SensorConnectionEvent).filter(
+            models.SensorConnectionEvent.sensor_id == sensor.sensor_id,
+            models.SensorConnectionEvent.event_type == "sensor_suspended",
+        ).all()
+        assert len(events) == 1
+        assert events[0].status == "success"
+
+
+def test_suspend_tenant_calls_data_service_disconnect_per_sensor(client, mock_user, db_session):
+    """The data-service DELETE /sensors/{tenant}/{sensor}/disconnect is called once per active sensor."""
+    s1 = _make_active_sensor(db_session, mock_user.tenant_id, mock_user.user_id, "S1")
+    s2 = _make_active_sensor(db_session, mock_user.tenant_id, mock_user.user_id, "S2")
+
+    delete_calls: list[str] = []
+
+    async def mock_delete(url, **kwargs):
+        delete_calls.append(url)
+        return MagicMock(status_code=200)
+
+    with patch("httpx.AsyncClient") as mock_cls:
+        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_cls.return_value)
+        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_cls.return_value.delete = mock_delete
+
+        resp = client.post(
+            "/internal/sensors/suspend-tenant",
+            json={"tenant_id": mock_user.tenant_id},
+        )
+
+    assert resp.status_code == 200
+    assert resp.json()["suspended"] == 2
+
+    # One disconnect call per sensor, containing the correct IDs
+    assert len(delete_calls) == 2
+    called_ids = {url.split("/")[-2] for url in delete_calls}  # …/{sensor_id}/disconnect
+    assert s1.sensor_id in called_ids
+    assert s2.sensor_id in called_ids
+
+
+def test_suspend_tenant_continues_if_data_service_fails(client, mock_user, db_session):
+    """If the data-service disconnect call throws, suspension still succeeds in the DB."""
+    s1 = _make_active_sensor(db_session, mock_user.tenant_id, mock_user.user_id, "S1")
+    s2 = _make_active_sensor(db_session, mock_user.tenant_id, mock_user.user_id, "S2")
+
+    with patch("httpx.AsyncClient") as mock_cls:
+        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_cls.return_value)
+        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        # Simulate data service being unreachable
+        mock_cls.return_value.delete = AsyncMock(
+            side_effect=httpx.RequestError("Connection refused")
+        )
+
+        resp = client.post(
+            "/internal/sensors/suspend-tenant",
+            json={"tenant_id": mock_user.tenant_id},
+        )
+
+    # The HTTP response must still be 200 — DB suspension is authoritative
+    assert resp.status_code == 200
+    assert resp.json()["suspended"] == 2
+
+    # Both sensors must be inactive in the DB despite the data-service failure
+    db_session.expire_all()
+    for sensor in [s1, s2]:
+        db_session.refresh(sensor)
+        assert sensor.status == models.SensorStatus.inactive
+
+
+def test_suspend_tenant_does_not_affect_other_tenants(client, mock_user, other_user, db_session):
+    """Suspending one tenant must never touch sensors from another tenant."""
+    my_sensor    = _make_active_sensor(db_session, mock_user.tenant_id, mock_user.user_id, "Mine")
+    other_sensor = _make_active_sensor(db_session, other_user.tenant_id, other_user.user_id, "Theirs")
+
+    with patch("httpx.AsyncClient") as mock_cls:
+        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_cls.return_value)
+        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_cls.return_value.delete = AsyncMock(return_value=MagicMock(status_code=200))
+
+        resp = client.post(
+            "/internal/sensors/suspend-tenant",
+            json={"tenant_id": mock_user.tenant_id},
+        )
+
+    assert resp.status_code == 200
+    assert resp.json()["suspended"] == 1
+
+    db_session.expire_all()
+    db_session.refresh(my_sensor)
+    db_session.refresh(other_sensor)
+
+    assert my_sensor.status == models.SensorStatus.inactive
+    assert other_sensor.status == models.SensorStatus.active  # untouched
+
+
+def test_suspend_tenant_no_active_sensors(client, mock_user):
+    """Suspending a tenant with no active sensors returns suspended=0 and makes no disconnect calls."""
+    with patch("httpx.AsyncClient") as mock_cls:
+        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_cls.return_value)
+        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_cls.return_value.delete = AsyncMock(return_value=MagicMock(status_code=200))
+
+        resp = client.post(
+            "/internal/sensors/suspend-tenant",
+            json={"tenant_id": mock_user.tenant_id},
+        )
+
+    assert resp.status_code == 200
+    assert resp.json()["suspended"] == 0
+    mock_cls.return_value.delete.assert_not_called()

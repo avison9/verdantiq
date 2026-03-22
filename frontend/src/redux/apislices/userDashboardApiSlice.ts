@@ -202,7 +202,7 @@ export interface BillingTopUp {
 }
 
 export interface BillingFrequencyUpdate {
-  frequency: "weekly" | "monthly" | "quarterly" | "yearly";
+  frequency: "daily" | "weekly" | "monthly" | "quarterly" | "yearly";
 }
 
 export interface BillingProcessCycle {
@@ -292,6 +292,10 @@ export interface SchemaTable  { name: string; cols: SchemaColumn[]; }
 export interface SchemaEntry  { name: string; tables: SchemaTable[]; }
 export interface CatalogEntry { name: string; schemas: SchemaEntry[]; }
 export interface SchemaTree   { catalogs: CatalogEntry[]; }
+
+export interface QueryHistoryItem { ts: string; sql: string; ms: number; }
+export interface QueryHistory     { items: QueryHistoryItem[]; }
+export interface LastSqlResponse  { sql: string | null; }
 
 export const userDashboardApiSlice = baseApiSlice.injectEndpoints({
   endpoints: (builder) => ({
@@ -524,6 +528,12 @@ export const userDashboardApiSlice = baseApiSlice.injectEndpoints({
     getQuerySchema: builder.query<SchemaTree, void>({
       query: () => `${APIendPoints.query}/schema`,
     }),
+    getQueryHistory: builder.query<QueryHistory, void>({
+      query: () => `${APIendPoints.query}/history`,
+    }),
+    getLastSql: builder.query<LastSqlResponse, void>({
+      query: () => `${APIendPoints.query}/last-sql`,
+    }),
   }),
 });
 
@@ -562,4 +572,6 @@ export const {
   useDeleteCropMutation,
   useRunQueryMutation,
   useGetQuerySchemaQuery,
+  useGetQueryHistoryQuery,
+  useGetLastSqlQuery,
 } = userDashboardApiSlice;

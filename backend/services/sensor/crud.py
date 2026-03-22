@@ -73,6 +73,7 @@ def create_sensor(db: Session, sensor: schemas.SensorCreate, user_id: int) -> mo
         sensor_name=sensor.sensor_name,
         sensor_type=sensor.sensor_type,
         location=sensor.location,
+        farm_id=sensor.farm_id,
         sensor_metadata=meta or None,
         mqtt_token=str(uuid.uuid4()),
         status=models.SensorStatus.pending,
@@ -345,10 +346,10 @@ def get_sensor_data(sensor_id: str, tenant_id: int) -> List[schemas.SensorDataPo
         conn.close()
 
 
-def suspend_tenant_sensors(db: Session, tenant_id: int) -> int:
+def suspend_tenant_sensors(db: Session, tenant_id: int) -> list[str]:
     """Mark every active sensor for a tenant as inactive and stamp billing_suspended metadata.
 
-    Returns the count of sensors that were deactivated.
+    Returns the list of sensor_ids that were deactivated.
     """
     active_sensors = (
         db.query(models.Sensor)
@@ -376,7 +377,7 @@ def suspend_tenant_sensors(db: Session, tenant_id: int) -> int:
             details={"reason": "billing_suspended"},
         )
     db.commit()
-    return len(active_sensors)
+    return [s.sensor_id for s in active_sensors]
 
 
 def run_query(sql: str, tenant_id: int) -> tuple[list[str], list[list[str | None]]]:

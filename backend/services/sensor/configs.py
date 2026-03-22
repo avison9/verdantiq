@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ALLOWED_ORIGINS: str = "http://localhost:5173,http://13.50.234.104:5173"
     TENANT_SERVICE_URL: str = "http://tenant:8002"
+    DATA_SERVICE_URL: str = "http://data-service:8090"
+    REDIS_URL: str = "redis://redis:6379"
     TRINO_HOST: str = "trino"
     TRINO_PORT: int = 8080
     TRINO_USER: str = "user"
