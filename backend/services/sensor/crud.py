@@ -73,6 +73,7 @@ def create_sensor(db: Session, sensor: schemas.SensorCreate, user_id: int) -> mo
         sensor_name=sensor.sensor_name,
         sensor_type=sensor.sensor_type,
         location=sensor.location,
+        farm_id=sensor.farm_id,
         sensor_metadata=meta or None,
         mqtt_token=str(uuid.uuid4()),
         status=models.SensorStatus.pending,

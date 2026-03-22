@@ -7,7 +7,9 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 from typing import List, Optional
 import httpx
+import json
 import logging
+import redis.asyncio as aioredis
 import time
 import trino.exceptions
 import models
@@ -15,6 +17,15 @@ import schemas
 import crud
 from authenticate import decode_access_token
 from configs import get_db, settings, Base, engine, ALLOWED_ORIGINS
+
+
+_log = logging.getLogger(__name__)
+
+# ── Redis client (initialized in lifespan) ────────────────────────────────────
+_redis: aioredis.Redis | None = None
+
+_HIST_TTL   = 86_400   # 24 hours
+_HIST_MAX   = 20       # keep last 20 queries per tenant
 
 
 @asynccontextmanager
@@ -116,7 +127,20 @@ async def lifespan(app: FastAPI):
         """))
         conn.commit()
 
+    # ── Redis client ───────────────────────────────────────────────────────────
+    global _redis
+    try:
+        _redis = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+        await _redis.ping()
+        _log.info("Redis connected: %s", settings.REDIS_URL)
+    except Exception as exc:
+        _log.warning("Redis unavailable — query history disabled: %s", exc)
+        _redis = None
+
     yield
+
+    if _redis:
+        await _redis.aclose()
 
 
 
@@ -683,7 +707,58 @@ async def execute_query(
             detail=f"Query engine unavailable: {exc}",
         )
     ms = int((time.monotonic() - t0) * 1000)
+
+    # Persist history + last SQL to Redis (non-fatal if Redis is down)
+    if _redis:
+        try:
+            hist_key = f"viq:query:history:{current_user.tenant_id}:{current_user.user_id}"
+            last_key = f"viq:query:last_sql:{current_user.tenant_id}:{current_user.user_id}"
+            item = json.dumps({
+                "ts":  datetime.now(timezone.utc).isoformat(),
+                "sql": body.sql,
+                "ms":  ms,
+            })
+            await _redis.lpush(hist_key, item)
+            await _redis.ltrim(hist_key, 0, _HIST_MAX - 1)
+            await _redis.expire(hist_key, _HIST_TTL)
+            await _redis.set(last_key, body.sql, ex=_HIST_TTL)
+        except Exception as exc:
+            _log.warning("Failed to save query history to Redis: %s", exc)
+
     return schemas.QueryResult(columns=columns, rows=rows, ms=ms)
+
+
+@app.get("/query/history", response_model=schemas.QueryHistory)
+async def get_query_history(
+    current_user: models.User = Depends(get_current_user),
+):
+    """Return the last 20 queries run by this tenant (from Redis cache)."""
+    if not _redis:
+        return schemas.QueryHistory(items=[])
+    try:
+        hist_key = f"viq:query:history:{current_user.tenant_id}:{current_user.user_id}"
+        raw = await _redis.lrange(hist_key, 0, -1)
+        items = [schemas.QueryHistoryItem(**json.loads(r)) for r in raw]
+        return schemas.QueryHistory(items=items)
+    except Exception as exc:
+        _log.warning("Failed to fetch query history from Redis: %s", exc)
+        return schemas.QueryHistory(items=[])
+
+
+@app.get("/query/last-sql", response_model=schemas.LastSqlResponse)
+async def get_last_sql(
+    current_user: models.User = Depends(get_current_user),
+):
+    """Return the last SQL query run by this tenant (from Redis cache)."""
+    if not _redis:
+        return schemas.LastSqlResponse(sql=None)
+    try:
+        last_key = f"viq:query:last_sql:{current_user.tenant_id}:{current_user.user_id}"
+        sql = await _redis.get(last_key)
+        return schemas.LastSqlResponse(sql=sql)
+    except Exception as exc:
+        _log.warning("Failed to fetch last SQL from Redis: %s", exc)
+        return schemas.LastSqlResponse(sql=None)
 
 
 @app.get("/health")
