@@ -84,7 +84,7 @@ const FarmDetail = () => {
             </span>
           )}
         </div>
-        <Link to={`/farm/add`}
+        <Link to={`/farm/${farmId}/edit`}
           className="text-xs text-emerald-600 hover:text-emerald-700 font-medium border border-emerald-200 px-3 py-1.5 rounded-lg hover:bg-emerald-50 transition-colors">
           Edit farm
         </Link>
