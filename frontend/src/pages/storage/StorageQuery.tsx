@@ -312,17 +312,25 @@ const StorageQuery = () => {
 
   const handleRun = async () => {
     if (!billingActive || !sql.trim()) return;
+
+    // If the user has highlighted a portion of the SQL, run only that selection.
+    const el = textareaRef.current;
+    const selectedSql =
+      el && el.selectionStart !== el.selectionEnd
+        ? sql.slice(el.selectionStart, el.selectionEnd)
+        : sql;
+
     setRunning(true);
     setResults(null);
     setQueryError(null);
     setQueryTrinoFailed(false);
     setActiveTab("results");
     try {
-      const result = await runQuery({ sql }).unwrap();
+      const result = await runQuery({ sql: selectedSql }).unwrap();
       setResults(result);
       setHistory(prev => [{
         ts:      new Date().toISOString(),
-        sql:     sql.trim(),
+        sql:     selectedSql.trim(),
         ms:      result.ms,
         qu:      result.qu,
         cost:    result.cost,
